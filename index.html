@@ -9511,9 +9511,52 @@ async function createCharacterFromCard(cardData, avatarUrl) {
 // ===============================================================
 // END: 角色卡导入功能核心函数
 // ===============================================================
-
-// ▲▲▲ 粘贴到这里结束 ▲▲▲
         const init = async () => {
+		
+// ▼▼▼ 在这里粘贴下面的新代码 ▼▼▼
+
+    // --- 新增：聊天记录管理 ---
+    const MAX_HISTORY_PER_CHAT = 200; // 定义每个聊天最多保留200条消息，您可以根据需要调整这个数字
+
+    /**
+     * 在应用启动时，修剪所有过长的聊天记录
+     */
+    async function trimAllChatHistories() {
+        console.log("开始检查并修剪聊天记录...");
+        let trimmedCount = 0;
+
+        // 遍历所有私聊角色
+        for (const character of db.characters) {
+            if (character.history && character.history.length > MAX_HISTORY_PER_CHAT) {
+                const originalLength = character.history.length;
+                // 只保留最新的 MAX_HISTORY_PER_CHAT 条消息
+                character.history = character.history.slice(-MAX_HISTORY_PER_CHAT);
+                console.log(`已修剪角色 "${character.remarkName}" 的聊天记录，从 ${originalLength} 条减少到 ${character.history.length} 条。`);
+                trimmedCount++;
+            }
+        }
+
+        // 遍历所有群聊
+        for (const group of db.groups) {
+            if (group.history && group.history.length > MAX_HISTORY_PER_CHAT) {
+                const originalLength = group.history.length;
+                group.history = group.history.slice(-MAX_HISTORY_PER_CHAT);
+                console.log(`已修剪群聊 "${group.name}" 的聊天记录，从 ${originalLength} 条减少到 ${group.history.length} 条。`);
+                trimmedCount++;
+            }
+        }
+
+        // 如果有任何记录被修剪，则保存更改
+        if (trimmedCount > 0) {
+            await saveData();
+            showToast(`已自动清理 ${trimmedCount} 个过长的聊天记录，以优化性能。`);
+        } else {
+            console.log("所有聊天记录都在正常范围内，无需清理。");
+        }
+    }
+    // --- 新增结束 ---
+
+// ▲▲▲ 粘贴到这里结束 ▲▲▲		
         	// 在 init 函数的最顶部添加
 if (!db.userDiaries) {
     db.userDiaries = [];
@@ -9566,7 +9609,7 @@ if (db.characters.some(c => c.userDiaries && c.userDiaries.length > 0)) {
     console.log('用户日记数据已成功迁移到全局。');
     saveData(); // 保存迁移后的结果
 }
-            
+            await trimAllChatHistories(); 
             applyGlobalFont(db.fontUrl);
             setupCustomWidgetSystem();
             setupHomeScreen();
@@ -17400,7 +17443,15 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
                 generateDiaryEntry();
             }
         }
-
+ // ▼▼▼ 在这里粘贴下面的新代码 ▼▼▼
+        // --- 新增：自动修剪聊天记录，防止无限增长 ---
+        if (chat.history.length > MAX_HISTORY_PER_CHAT) {
+            // 只保留最新的 MAX_HISTORY_PER_CHAT 条消息
+            chat.history = chat.history.slice(-MAX_HISTORY_PER_CHAT);
+            console.log(`已自动修剪 "${chat.name || chat.remarkName}" 的聊天记录以保持性能。`);
+        }
+        // --- 新增结束 ---
+        // ▲▲▲ 粘贴到这里结束 ▲▲▲
         if (chat.povCache) {
             chat.povCache = null;
         }
@@ -32811,21 +32862,6 @@ fileInput.addEventListener('change', async (e)=>{
 </div>
 <!-- ▲▲▲ 粘贴结束 ▲▲▲ -->  
   
-      <!-- ▼▼▼ 在这里粘贴新的代码 ▼▼▼ -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js')
-            .then(registration => {
-              console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            })
-            .catch(err => {
-              console.log('ServiceWorker registration failed: ', err);
-            });
-        });
-      }
-    </script>
-    <!-- ▲▲▲ 粘贴结束 ▲▲▲ -->
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const phoneScreen = document.querySelector('.phone-screen');
