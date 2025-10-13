@@ -8028,37 +8028,30 @@ const locationBtn = document.getElementById('location-btn'),
         };
 // ▼▼▼ 请用这个包含所有修复的、最新的完整函数，替换掉文件中旧的 loadData 函数 ▼▼▲▲
         const loadData = async () => {
-            // --- 核心修复：增加 localStorage 迁移标记，防止重复执行 ---
+            // localStorage 旧数据迁移 (现在有自己的标记，很安全)
             try {
                 const lsMigrationFlag = await dataStorage.getData('localStorage_migration_complete');
                 if (!lsMigrationFlag) {
-                    // 只有在没有标记的情况下，才执行一次检查
                     const oldData = localStorage.getItem('gemini-chat-app-db');
                     if (oldData) {
                         console.log('检测到localStorage中的旧数据，开始一次性迁移...');
                         await saveData(JSON.parse(oldData));
                         localStorage.removeItem('gemini-chat-app-db');
-                        console.log('localStorage旧数据迁移完成并已清理');
                     }
-                    // 无论是否找到数据，都设置标记，确保此代码块不再运行
                     await dataStorage.saveData('localStorage_migration_complete', true);
                     console.log('已设置localStorage迁移完成标记。');
                 }
-            } catch (e) {
-                console.error("处理localStorage旧数据时出错:", e);
-            }
-            // --- 修复结束 ---
+            } catch (e) { console.error("处理localStorage旧数据时出错:", e); }
 
-            // 首先尝试数据迁移 (这个逻辑现在也是安全的，因为它有自己的标记)
+            // 旧DB数据迁移 (现在有自己的标记，很安全)
             await dataStorage.migrateFromOldStorage();
 
-            // 额外的安全检查：确保旧数据库完全清理
+            // 额外的安全检查 (保持不变)
             try {
                 const safetyCheckDb = new Dexie('章鱼喷墨机DB');
                 safetyCheckDb.version(1).stores({ storage: 'key, value, timestamp' });
                 const residualData = await safetyCheckDb.storage.get('章鱼喷墨机');
                 if (residualData) {
-                    console.warn('发现残留的旧数据库数据，执行强制清理...');
                     await safetyCheckDb.storage.clear();
                     safetyCheckDb.close();
                     await safetyCheckDb.delete();
@@ -8070,7 +8063,45 @@ const locationBtn = document.getElementById('location-btn'),
                 console.log('旧数据库安全检查完成（数据库不存在或已清理）。');
             }
 
-            // --- 核心修复：处理“待创建角色”的恢复 (保持不变) ---
+            // --- 核心修复⑤：恢复被中断的“导入角色”事务 (在加载主数据之前) ---
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('pendingAction_importChar_')) {
+                        const transactionData = localStorage.getItem(key);
+                        if (transactionData) {
+                            const { newChar, newWorldBooks, newRendererRules } = JSON.parse(transactionData);
+                            
+                            // 检查角色是否已存在，防止重复恢复
+                            const charExists = await dataStorage.getData(`character_${newChar.id}`);
+                            if (!charExists) {
+                                console.log(`恢复中断的导入事务: ${newChar.remarkName}`);
+                                
+                                // 1. 恢复新角色
+                                await dataStorage.saveData(`character_${newChar.id}`, newChar);
+                                
+                                // 2. 恢复世界书
+                                const existingWorldBooks = await dataStorage.getData('worldBooks_data') || [];
+                                await dataStorage.saveData('worldBooks_data', [...existingWorldBooks, ...newWorldBooks]);
+
+                                // 3. 恢复渲染器规则 (它们存在于主数据对象中)
+                                const baseData = await dataStorage.getData('章鱼喷墨机') || {};
+                                baseData.renderers = [...(baseData.renderers || []), ...newRendererRules];
+                                await dataStorage.saveData('章鱼喷墨机', baseData);
+
+                                console.log('导入事务恢复成功。');
+                            }
+                            // 无论是否恢复，都必须清理掉这个临时备份
+                            localStorage.removeItem(key);
+                        }
+                    }
+                }
+            } catch(e) {
+                console.error("恢复导入角色事务失败:", e);
+            }
+            // --- 修复结束 ---
+
+            // --- 核心修复：恢复“待创建角色”的恢复 (保持不变) ---
             try {
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
@@ -8081,7 +8112,6 @@ const locationBtn = document.getElementById('location-btn'),
                             const exists = await dataStorage.getData(`character_${charToAdd.id}`);
                             if (!exists) {
                                 await dataStorage.saveData(`character_${charToAdd.id}`, charToAdd);
-                                console.log(`已从 localStorage 恢复并创建角色: ${charToAdd.remarkName}`);
                             }
                             localStorage.removeItem(key);
                         }
@@ -8154,7 +8184,6 @@ const locationBtn = document.getElementById('location-btn'),
                     try {
                         const clearBufferKey = `pendingAction_clearHistory_private_${charId}`;
                         if (localStorage.getItem(clearBufferKey)) {
-                            console.log(`为角色 ${charData.remarkName} 恢复了待清空操作。`);
                             await dataStorage.clearChatMessages(charId, 'private');
                             localStorage.removeItem(clearBufferKey);
                             historyCleared = true;
@@ -9448,117 +9477,145 @@ function handlePngImport(file) {
  * @param {object} cardData - 从 .json 或 .png 中解析出的角色数据对象
  * @param {string} avatarUrl - 角色的头像 Data URL 或默认 URL
  */
-async function createCharacterFromCard(cardData, avatarUrl) {
-    // 兼容不同版本的角色卡格式 (v2/v3)
-    const data = cardData.data || cardData;
-    if (!data || !data.name) {
-        showToast('导入失败：角色卡格式不正确，缺少名称。');
-        return;
-    }
-
-    const worldBookIds = [];
-
-    if (data.character_book && data.character_book.entries && data.character_book.entries.length > 0) {
-        const categoryName = `${data.name} - 世界书`;
-        const newCategory = {
-            id: `cat_${Date.now()}`,
-            name: categoryName,
-            isCollapsed: false
-        };
-        db.worldBookCategories.push(newCategory);
-        showToast(`已自动创建分类: "${categoryName}"`);
-
-        let entryCounter = 1;
-        for (const entry of data.character_book.entries) {
-            if (!entry.content) continue;
-            const contentParts = entry.content.split('---').map(part => part.trim()).filter(part => part.length > 0);
-            for (const partContent of contentParts) {
-                const newWorldBook = {
-                    id: `wb_${Date.now()}_${entryCounter}`,
-                    name: `${data.name} - 条目 ${entryCounter}`,
-                    content: partContent,
-                    position: 'before',
-                    categoryId: newCategory.id
-                };
-                db.worldBooks.push(newWorldBook);
-                worldBookIds.push(newWorldBook.id);
-                entryCounter++;
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 createCharacterFromCard 函数 ▼▼▼
+        async function createCharacterFromCard(cardData, avatarUrl) {
+            // 兼容不同版本的角色卡格式 (v2/v3)
+            const data = cardData.data || cardData;
+            if (!data || !data.name) {
+                showToast('导入失败：角色卡格式不正确，缺少名称。');
+                return;
             }
-        }
-    }
 
-    const newChar = {
-        id: `char_${Date.now()}`,
-        realName: data.name,
-        isOfflineMode: false,
-        remarkName: data.name,
-        persona: data.description || '',
-        avatar: avatarUrl,
-        myName: '我',
-        myPersona: '',
-        myAvatar: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg',
-        theme: 'white_pink',
-        maxMemory: 10,
-        chatBg: '',
-        history: [],
-        diaries: [],
-        messageCountSinceLastDiary: 0,
-        memories: [],
-        isPinned: false,
-        status: '在线',
-        worldBookIds: worldBookIds,
-        useCustomBubbleCss: false,
-        customBubbleCss: '',
-        pendingMessages: [],
-        aiProactiveChatEnabled: false,
-        aiProactiveChatDelay: 0,
-        isBlockedByUser: false,
-        isBlockedByAi: false,
-        offlineSettings: {
-            fontSize: 16,
-            useCustomWordCount: false,
-            minWords: 300,
-            maxWords: 500,
-            useCustomCss: true,
-            customCss: '',
-            preset: 'default_dark'
-        },
-        userBlockTimestamp: null,
-        aiBlockTimestamp: null,
-        blockEndTime: null,
-    };
+            // --- 核心修改：先将所有新数据创建在临时变量中 ---
+            const newWorldBooks = [];
+            const newRendererRules = [];
+            const worldBookIds = [];
 
-    if (data.character_book && data.character_book.entries && data.character_book.entries.length > 0) {
-        const regexEntries = data.character_book.entries.filter(entry => entry.use_regex && entry.keys.length > 0 && entry.content);
-        if (regexEntries.length > 0) {
-            const categoryName = data.name;
-            let category = db.rendererCategories.find(c => c.name === categoryName);
-            if (!category) {
-                category = { id: `rend_cat_${Date.now()}`, name: categoryName };
-                db.rendererCategories.push(category);
+            if (data.character_book && data.character_book.entries && data.character_book.entries.length > 0) {
+                const categoryName = `${data.name} - 世界书`;
+                let category = db.worldBookCategories.find(c => c.name === categoryName);
+                if (!category) {
+                    category = { id: `cat_${Date.now()}`, name: categoryName, isCollapsed: false };
+                    db.worldBookCategories.push(category); // 分类可以先加入内存
+                }
+
+                let entryCounter = 1;
+                for (const entry of data.character_book.entries) {
+                    if (!entry.content) continue;
+                    const contentParts = entry.content.split('---').map(part => part.trim()).filter(part => part.length > 0);
+                    for (const partContent of contentParts) {
+                        const newWorldBook = {
+                            id: `wb_${Date.now()}_${entryCounter}`,
+                            name: `${data.name} - 条目 ${entryCounter}`,
+                            content: partContent,
+                            position: 'before',
+                            categoryId: category.id
+                        };
+                        newWorldBooks.push(newWorldBook); // 添加到临时数组
+                        worldBookIds.push(newWorldBook.id);
+                        entryCounter++;
+                    }
+                }
             }
-            regexEntries.forEach((entry, index) => {
-                const newRule = {
-                    id: `rend_rule_${Date.now()}_${index}`,
-                    name: entry.comment || `${data.name} 规则 ${index + 1}`,
-                    regex: entry.keys.join('|'),
-                    html: entry.content,
-                    characterIds: [newChar.id],
-                    enabled: entry.enabled,
-                    categoryId: category.id
-                };
-                db.renderers.push(newRule);
-            });
-            showToast(`已为“${data.name}”自动导入 ${regexEntries.length} 条渲染规则！`);
+
+            const newChar = {
+                id: `char_${Date.now()}`,
+                realName: data.name,
+                isOfflineMode: false,
+                remarkName: data.name,
+                persona: data.description || '',
+                avatar: avatarUrl,
+                myName: '我',
+                myPersona: '',
+                myAvatar: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg',
+                theme: 'white_pink',
+                maxMemory: 10,
+                chatBg: '',
+                history: [],
+                diaries: [],
+                messageCountSinceLastDiary: 0,
+                memories: [],
+                isPinned: false,
+                status: '在线',
+                worldBookIds: worldBookIds,
+                useCustomBubbleCss: false,
+                customBubbleCss: '',
+                pendingMessages: [],
+                aiProactiveChatEnabled: false,
+                aiProactiveChatDelay: 0,
+                isBlockedByUser: false,
+                isBlockedByAi: false,
+                offlineSettings: { fontSize: 16, useCustomWordCount: false, minWords: 300, maxWords: 500, useCustomCss: true, customCss: '', preset: 'default_dark' },
+                userBlockTimestamp: null,
+                aiBlockTimestamp: null,
+                blockEndTime: null,
+            };
+
+            if (data.character_book && data.character_book.entries && data.character_book.entries.length > 0) {
+                const regexEntries = data.character_book.entries.filter(entry => entry.use_regex && entry.keys.length > 0 && entry.content);
+                if (regexEntries.length > 0) {
+                    const categoryName = data.name;
+                    let category = db.rendererCategories.find(c => c.name === categoryName);
+                    if (!category) {
+                        category = { id: `rend_cat_${Date.now()}`, name: categoryName };
+                        db.rendererCategories.push(category);
+                    }
+                    regexEntries.forEach((entry, index) => {
+                        const newRule = {
+                            id: `rend_rule_${Date.now()}_${index}`,
+                            name: entry.comment || `${data.name} 规则 ${index + 1}`,
+                            regex: entry.keys.join('|'),
+                            html: entry.content,
+                            characterIds: [newChar.id],
+                            enabled: entry.enabled,
+                            categoryId: category.id
+                        };
+                        newRendererRules.push(newRule); // 添加到临时数组
+                    });
+                }
+            }
+            
+            // --- 核心改造：同步救生艇 + 异步货轮 ---
+            const importTransaction = { newChar, newWorldBooks, newRendererRules };
+            const bufferKey = `pendingAction_importChar_${newChar.id}`;
+
+            try {
+                // 1. 同步“救生艇”：将整个导入事务写入 localStorage
+                localStorage.setItem(bufferKey, JSON.stringify(importTransaction));
+                console.log(`同步备份了导入事务到 localStorage: ${newChar.remarkName}`);
+
+                // 2. 更新内存中的数据 (用于UI即时刷新)
+                db.characters.push(newChar);
+                db.worldBooks.push(...newWorldBooks);
+                db.renderers.push(...newRendererRules);
+
+                // 3. 异步“货轮”：立即、直接地将所有新数据写入主数据库
+                await dataStorage.saveData(`character_${newChar.id}`, newChar);
+                await dataStorage.saveData('worldBooks_data', db.worldBooks);
+                // 渲染器规则是主db对象的一部分，需要保存整个db
+                const { characters, groups, worldBooks, ...baseData } = db;
+                await dataStorage.saveData('章鱼喷墨机', baseData);
+
+                // 4. 异步操作成功后，清理“救生艇”
+                localStorage.removeItem(bufferKey);
+                console.log(`主存储成功，已清理 localStorage 的导入备份: ${newChar.remarkName}`);
+
+            } catch (error) {
+                console.error("导入角色时发生严重错误:", error);
+                showToast('导入失败，请检查控制台并刷新重试');
+                // 发生错误时，回滚内存中的更改，让恢复逻辑处理
+                db.characters = db.characters.filter(c => c.id !== newChar.id);
+                db.worldBooks = db.worldBooks.filter(wb => !newWorldBooks.some(nwb => nwb.id === wb.id));
+                db.renderers = db.renderers.filter(r => !newRendererRules.some(nrr => nrr.id === r.id));
+                localStorage.removeItem(bufferKey); // 清理可能失败的备份
+                return;
+            }
+
+            // 5. 更新UI
+            renderChatList();
+            showToast(`角色“${newChar.remarkName}”已成功导入！`);
         }
-    }
-
-    db.characters.push(newChar);
-    scheduleSaveData();
-    renderChatList();
-    showToast(`角色“${newChar.remarkName}”已成功导入！`);
-}
-
+// ▲▲▲ 替换结束 ▲▲▲
 // ===============================================================
 // END: 角色卡导入功能核心函数
 // ===============================================================
@@ -13300,143 +13357,6 @@ function handlePngImport(file) {
 }
 
 // ▲▲▲ 替换结束 ▲▲▲
-/**
- * 根据解析出的角色卡数据和头像URL，创建新角色和世界书（已更新分类和条目拆分逻辑）
- * @param {object} cardData - 从 .json 或 .png 中解析出的角色数据对象
- * @param {string} avatarUrl - 角色的头像 Data URL 或默认 URL
- */
-async function createCharacterFromCard(cardData, avatarUrl) {
-    // 兼容不同版本的角色卡格式 (v2/v3)
-    const data = cardData.data || cardData;
-    if (!data || !data.name) {
-        showToast('导入失败：角色卡格式不正确，缺少名称。');
-        return;
-    }
-
-    // 用于收集所有新创建的世界书条目ID，以便关联到角色
-    const worldBookIds = [];
-
-    // ▼▼▼ 核心修改逻辑开始 ▼▼▼
-    if (data.character_book && data.character_book.entries && data.character_book.entries.length > 0) {
-        
-        // 1. 为该角色创建一个新的世界书分类
-        const categoryName = `${data.name} - 世界书`;
-        const newCategory = {
-            id: `cat_${Date.now()}`,
-            name: categoryName,
-            isCollapsed: false // 默认展开
-        };
-        db.worldBookCategories.push(newCategory);
-        showToast(`已自动创建分类: "${categoryName}"`);
-
-        let entryCounter = 1; // 用于命名拆分后的条目
-
-        // 2. 遍历所有世界书条目
-        for (const entry of data.character_book.entries) {
-            if (!entry.content) continue;
-
-            // 3. 使用 "---" 分割内容，并清理空数据
-            const contentParts = entry.content.split('---')
-                .map(part => part.trim()) // 去除每个部分前后的空格
-                .filter(part => part.length > 0); // 过滤掉空的部分
-
-            // 4. 为每个分割后的内容部分创建独立的世界书条目
-            for (const partContent of contentParts) {
-                const newWorldBook = {
-                    id: `wb_${Date.now()}_${entryCounter}`,
-                    name: `${data.name} - 条目 ${entryCounter}`, // 自动命名
-                    content: partContent,
-                    position: 'before', // 默认前置注入
-                    categoryId: newCategory.id // 关联到新创建的分类
-                };
-                db.worldBooks.push(newWorldBook);
-                worldBookIds.push(newWorldBook.id); // 收集ID用于角色关联
-                entryCounter++;
-            }
-        }
-    }
-    // ▲▲▲ 核心修改逻辑结束 ▲▲▲
-
-    // 创建新角色对象
-    const newChar = {
-        id: `char_${Date.now()}`,
-        realName: data.name,
-        isOfflineMode: false,
-        remarkName: data.name,
-        persona: data.description || '',
-        avatar: avatarUrl,
-        myName: '我',
-        myPersona: '',
-        myAvatar: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg',
-        theme: 'white_pink',
-        maxMemory: 10,
-        chatBg: '',
-        history: [],
-        diaries: [],
-        messageCountSinceLastDiary: 0,
-        memories: [],
-        isPinned: false,
-        status: '在线',
-        worldBookIds: worldBookIds, // 关联所有新创建的世界书条目ID
-        useCustomBubbleCss: false,
-        customBubbleCss: '',
-        pendingMessages: [],
-        aiProactiveChatEnabled: false, // 新增
-    aiProactiveChatDelay: 0,      // 新增
-        isBlockedByUser: false,
-        isBlockedByAi: false,
-// ... 在 isBlockedByAi: false, 的后面添加
-offlineSettings: {
-    fontSize: 16, // 默认字号
-    useCustomWordCount: false, // 默认不启用自定义字数
-    minWords: 300, // 默认最小字数
-    maxWords: 500, // 默认最大字数
-    useCustomCss: true, // 默认启用线下模式专属气泡
-    customCss: '', // 自定义CSS内容
-    preset: 'default_dark' // 默认预设
-},
-// ... 后面是 userBlockTimestamp: null,        
-        userBlockTimestamp: null,
-        aiBlockTimestamp: null,
-        blockEndTime: null,
-    };
-if (data.character_book && data.character_book.entries && data.character_book.entries.length > 0) {
-        const regexEntries = data.character_book.entries.filter(entry => entry.use_regex && entry.keys.length > 0 && entry.content);
-        if (regexEntries.length > 0) {
-            // 为该角色创建一个渲染器分类
-            const categoryName = data.name;
-            let category = db.rendererCategories.find(c => c.name === categoryName);
-            if (!category) {
-                category = {
-                    id: `rend_cat_${Date.now()}`,
-                    name: categoryName
-                };
-                db.rendererCategories.push(category);
-            }
-
-            regexEntries.forEach((entry, index) => {
-                const newRule = {
-                    id: `rend_rule_${Date.now()}_${index}`,
-                    name: entry.comment || `${data.name} 规则 ${index + 1}`,
-                    regex: entry.keys.join('|'),
-                    html: entry.content,
-                    characterIds: [newChar.id], // 自动绑定到新创建的角色
-                    enabled: entry.enabled,
-                    categoryId: category.id
-                };
-                db.renderers.push(newRule);
-            });
-            showToast(`已为“${data.name}”自动导入 ${regexEntries.length} 条渲染规则！`);
-        }
-    }
-    // 添加到数据库并保存
-    db.characters.push(newChar);
-    scheduleSaveData();
-
-    // 刷新UI
-    renderChatList();
-    showToast(`角色“${newChar.remarkName}”已成功导入！`);
-}
 
 /**
          * 设置聊天内搜索功能
