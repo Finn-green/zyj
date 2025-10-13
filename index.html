@@ -8028,55 +8028,42 @@ const locationBtn = document.getElementById('location-btn'),
         };
 // ▼▼▼ 请用这个包含所有修复的、最新的完整函数，替换掉文件中旧的 loadData 函数 ▼▼▲▲
         const loadData = async () => {
-            // 阶段一：在加载主数据前，恢复所有独立的、非角色/群组绑定的数据
+            // 阶段一：恢复所有独立的、非角色/群组绑定的数据
             try {
-                // 恢复localStorage旧数据迁移标记
                 const lsMigrationFlag = await dataStorage.getData('localStorage_migration_complete');
                 if (!lsMigrationFlag) {
                     const oldData = localStorage.getItem('gemini-chat-app-db');
-                    if (oldData) {
-                        console.log('检测到localStorage中的旧数据，开始一次性迁移...');
-                        await saveData(JSON.parse(oldData));
-                        localStorage.removeItem('gemini-chat-app-db');
-                    }
+                    if (oldData) { await saveData(JSON.parse(oldData)); localStorage.removeItem('gemini-chat-app-db'); }
                     await dataStorage.saveData('localStorage_migration_complete', true);
-                    console.log('已设置localStorage迁移完成标记。');
                 }
-                
-                // 恢复旧DB迁移
                 await dataStorage.migrateFromOldStorage();
+                try {
+                    const safetyCheckDb = new Dexie('章鱼喷墨机DB');
+                    safetyCheckDb.version(1).stores({ storage: 'key, value, timestamp' });
+                    const residualData = await safetyCheckDb.storage.get('章鱼喷墨机');
+                    if (residualData) { await safetyCheckDb.storage.clear(); safetyCheckDb.close(); await safetyCheckDb.delete(); } 
+                    else { safetyCheckDb.close(); }
+                } catch (safetyError) { }
 
-                // 恢复壁纸
                 const mainWp = localStorage.getItem('pendingAction_updateWallpaper_main');
                 if (mainWp) { await dataStorage.saveData('wallpaper_data', mainWp); }
-                
                 const secondWp = localStorage.getItem('pendingAction_updateWallpaper_second');
                 if (secondWp) { await dataStorage.saveData('wallpaper2_data', secondWp); }
-
                 const aiWp = localStorage.getItem('pendingAction_updateWallpaper_ai');
                 if (aiWp) { await dataStorage.saveData('aiSpaceWallpaper_data', aiWp); }
-
-                // 恢复API设置
                 const apiSettings = localStorage.getItem('pendingAction_saveApiSettings');
                 if (apiSettings) { await dataStorage.saveData('apiSettings_data', JSON.parse(apiSettings)); }
-                
-                // 恢复自定义图标
                 const customIcons = localStorage.getItem('pendingAction_saveCustomIcons');
                 if (customIcons) { await dataStorage.saveData('customIcons_data', JSON.parse(customIcons)); }
-
-                // 恢复字体URL
                 const fontUrl = localStorage.getItem('pendingAction_saveFontUrl');
                 if (fontUrl) { await dataStorage.saveData('fontUrl_data', fontUrl); }
 
-                // 恢复渲染器、商城API、论坛和支付设置 (它们是主db的一部分)
                 let baseData = await dataStorage.getData('章鱼喷墨机') || {};
                 let baseDataUpdated = false;
-
                 const rendererData = localStorage.getItem('pendingAction_saveRendererData');
                 if (rendererData) {
                     const { renderers, rendererCategories } = JSON.parse(rendererData);
-                    baseData.renderers = renderers;
-                    baseData.rendererCategories = rendererCategories;
+                    baseData.renderers = renderers; baseData.rendererCategories = rendererCategories;
                     baseDataUpdated = true;
                 }
                 const mallApiSettings = localStorage.getItem('pendingAction_saveMallApiSettings');
@@ -8096,21 +8083,11 @@ const locationBtn = document.getElementById('location-btn'),
                     baseDataUpdated = true;
                 }
                 const globalCss = localStorage.getItem('pendingAction_saveGlobalCss');
-                if (globalCss) {
-                    baseData.globalCustomCss = globalCss;
-                    baseDataUpdated = true;
-                }
+                if (globalCss) { baseData.globalCustomCss = globalCss; baseDataUpdated = true; }
                 const layoutPref = localStorage.getItem('pendingAction_saveLayoutPreference');
-                if (layoutPref) {
-                    baseData.useWechatLayout = (layoutPref === 'true');
-                    baseDataUpdated = true;
-                }
-
-                if (baseDataUpdated) {
-                    await dataStorage.saveData('章鱼喷墨机', baseData);
-                }
+                if (layoutPref) { baseData.useWechatLayout = (layoutPref === 'true'); baseDataUpdated = true; }
+                if (baseDataUpdated) { await dataStorage.saveData('章鱼喷墨机', baseData); }
                 
-                // 恢复世界书和导入事务
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
                     const data = localStorage.getItem(key);
@@ -8136,7 +8113,6 @@ const locationBtn = document.getElementById('location-btn'),
                 }
             } catch(e) { console.error("恢复localStorage事务(阶段一)失败:", e); }
             
-            // 加载所有基础数据
             let loadedBaseData = await dataStorage.getData('章鱼喷墨机');
             if (loadedBaseData) db = { ...db, ...loadedBaseData };
             db.worldBooks = await dataStorage.getData('worldBooks_data') || [];
@@ -8148,11 +8124,8 @@ const locationBtn = document.getElementById('location-btn'),
             db.homeProfile = await dataStorage.getData('homeProfile_data') || { name: '点击设置昵称', signature: '点击设置个性签名', avatar: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg', heroBg: 'https://i.postimg.cc/wM57022X/image.png' };
             db.fontUrl = await dataStorage.getData('fontUrl_data') || '';
 
-            // 默认值设置
             if (!db.avatarFrames) db.avatarFrames = [];
             if (db.uncategorizedCollapsed === undefined) db.uncategorizedCollapsed = false;
-            if (!db.wallet) { db.wallet = { balance: 0.00, passwordEnabled: false, password: null, transactions: [] }; }
-            if (!db.homeScreenMode) db.homeScreenMode = 'night';
 
             db.characters = [];
             db.groups = [];
@@ -8164,40 +8137,36 @@ const locationBtn = document.getElementById('location-btn'),
             // 阶段二：恢复所有依赖于角色/群组数据的事务
             for (const key of characterKeys) {
                 const charId = key.replace('character_', '');
-                const settingsBufferKey = `pendingAction_updateSettings_private_${charId}`;
-                const worldBookBufferKey = `pendingAction_linkWorldBooks_private_${charId}`;
-                const soulBondBufferKey = `pendingAction_saveSoulBondData_${charId}`;
-                const statusBufferKey = `pendingAction_updateStatus_${charId}`;
-                
-                const settingsData = localStorage.getItem(settingsBufferKey);
-                const worldBookData = localStorage.getItem(worldBookBufferKey);
-                const soulBondData = localStorage.getItem(soulBondBufferKey);
-                const statusData = localStorage.getItem(statusBufferKey);
+                const settingsData = localStorage.getItem(`pendingAction_updateSettings_private_${charId}`);
+                const worldBookData = localStorage.getItem(`pendingAction_linkWorldBooks_private_${charId}`);
+                const soulBondData = localStorage.getItem(`pendingAction_saveSoulBondData_${charId}`);
+                const statusData = localStorage.getItem(`pendingAction_updateStatus_${charId}`);
+                const chatBgData = localStorage.getItem(`pendingAction_updateChatBg_private_${charId}`); // 新增
 
-                if (settingsData || worldBookData || soulBondData || statusData) {
+                if (settingsData || worldBookData || soulBondData || statusData || chatBgData) { // 新增
                     const charToUpdate = await dataStorage.getData(key);
                     if (charToUpdate) {
                         if (settingsData) Object.assign(charToUpdate, JSON.parse(settingsData));
                         if (worldBookData) charToUpdate.worldBookIds = JSON.parse(worldBookData);
                         if (soulBondData) charToUpdate.soulBondData = JSON.parse(soulBondData);
                         if (statusData) charToUpdate.status = statusData;
+                        if (chatBgData) charToUpdate.chatBg = chatBgData; // 新增
                         await dataStorage.saveData(key, charToUpdate);
                     }
                 }
             }
             for (const key of groupKeys) {
                 const groupId = key.replace('group_', '');
-                const settingsBufferKey = `pendingAction_updateSettings_group_${groupId}`;
-                const worldBookBufferKey = `pendingAction_linkWorldBooks_group_${groupId}`;
+                const settingsData = localStorage.getItem(`pendingAction_updateSettings_group_${groupId}`);
+                const worldBookData = localStorage.getItem(`pendingAction_linkWorldBooks_group_${groupId}`);
+                const chatBgData = localStorage.getItem(`pendingAction_updateChatBg_group_${groupId}`); // 新增
 
-                const settingsData = localStorage.getItem(settingsBufferKey);
-                const worldBookData = localStorage.getItem(worldBookBufferKey);
-
-                if (settingsData || worldBookData) {
+                if (settingsData || worldBookData || chatBgData) { // 新增
                     const groupToUpdate = await dataStorage.getData(key);
                     if (groupToUpdate) {
                         if (settingsData) Object.assign(groupToUpdate, JSON.parse(settingsData));
                         if (worldBookData) groupToUpdate.worldBookIds = JSON.parse(worldBookData);
+                        if (chatBgData) groupToUpdate.chatBg = chatBgData; // 新增
                         await dataStorage.saveData(key, groupToUpdate);
                     }
                 }
@@ -18568,27 +18537,37 @@ chatSettingsBtn.addEventListener('click', () => {
                     }
                 }
             });
+// ▼▼▼ 在 setupChatSettings 函数中，找到并替换这个事件监听器 ▼▼▼
             document.getElementById('setting-chat-bg-upload').addEventListener('change', async (e) => {
                 const file = e.target.files[0];
-                if (file) {
-                    const char = db.characters.find(c => c.id === currentChatId);
-                    if (char) {
-                        try {
-                            const compressedUrl = await compressImage(file, {
-                                quality: 0.85,
-                                maxWidth: 1080,
-                                maxHeight: 1920
-                            });
-                            char.chatBg = compressedUrl;
-                            chatRoomScreen.style.backgroundImage = `url(${compressedUrl})`;
-                            scheduleSaveData();
-                            showToast('聊天背景已更换');
-                        } catch (error) {
-                            showToast('背景压缩失败，请重试');
-                        }
-                    }
+                if (!file) return;
+
+                const char = db.characters.find(c => c.id === currentChatId);
+                if (!char) return;
+
+                try {
+                    const compressedUrl = await compressImage(file, { quality: 0.85, maxWidth: 1080, maxHeight: 1920 });
+                    const bufferKey = `pendingAction_updateChatBg_private_${char.id}`;
+
+                    // 1. 同步“救生艇”
+                    localStorage.setItem(bufferKey, compressedUrl);
+                    // 2. 更新内存
+                    char.chatBg = compressedUrl;
+                    // 3. 异步“货轮”
+                    await dataStorage.saveData(`character_${char.id}`, char);
+                    // 4. 清理“救生艇”
+                    localStorage.removeItem(bufferKey);
+
+                    // 5. 更新UI
+                    chatRoomScreen.style.backgroundImage = `url(${compressedUrl})`;
+                    showToast('聊天背景已更换');
+
+                } catch (error) {
+                    showToast('背景处理或保存失败，请重试');
+                    console.error("更换私聊背景失败:", error);
                 }
             });
+// ▲▲▲ 替换结束 ▲▲▲
             // 这是私聊的修改
 // ▼▼▼ 替换旧的清空按钮逻辑 ▼▼▼
 document.getElementById('summarize-history-btn').addEventListener('click', summarizeHistory);
@@ -20026,27 +20005,37 @@ function getBadgeClassForTitle(title) {
                     }
                 }
             });
+// ▼▼▼ 在 setupGroupChatSystem 函数中，找到并替换这个事件监听器 ▼▼▼
             document.getElementById('setting-group-chat-bg-upload').addEventListener('change', async (e) => {
                 const file = e.target.files[0];
-                if (file) {
-                    try {
-                        const compressedUrl = await compressImage(file, {
-                            quality: 0.85,
-                            maxWidth: 1080,
-                            maxHeight: 1920
-                        });
-                        const group = db.groups.find(g => g.id === currentChatId);
-                        if (group) {
-                            group.chatBg = compressedUrl;
-                            chatRoomScreen.style.backgroundImage = `url(${compressedUrl})`;
-                            scheduleSaveData();
-                            showToast('聊天背景已更换');
-                        }
-                    } catch (error) {
-                        showToast('群聊背景压缩失败，请重试');
-                    }
+                if (!file) return;
+
+                const group = db.groups.find(g => g.id === currentChatId);
+                if (!group) return;
+
+                try {
+                    const compressedUrl = await compressImage(file, { quality: 0.85, maxWidth: 1080, maxHeight: 1920 });
+                    const bufferKey = `pendingAction_updateChatBg_group_${group.id}`;
+
+                    // 1. 同步“救生艇”
+                    localStorage.setItem(bufferKey, compressedUrl);
+                    // 2. 更新内存
+                    group.chatBg = compressedUrl;
+                    // 3. 异步“货轮”
+                    await dataStorage.saveData(`group_${group.id}`, group);
+                    // 4. 清理“救生艇”
+                    localStorage.removeItem(bufferKey);
+                    
+                    // 5. 更新UI
+                    chatRoomScreen.style.backgroundImage = `url(${compressedUrl})`;
+                    showToast('群聊背景已更换');
+                    
+                } catch (error) {
+                    showToast('群聊背景处理或保存失败，请重试');
+                    console.error("更换群聊背景失败:", error);
                 }
             });
+// ▲▲▲ 替换结束 ▲▲▲
 // ▼▼▼ 替换旧的清空按钮逻辑 ▼▼▼
 document.getElementById('summarize-group-history-btn').addEventListener('click', summarizeHistory);
 document.getElementById('clear-group-chat-history-btn').addEventListener('click', clearHistory);
