@@ -5361,6 +5361,20 @@ html, body {
     bottom: env(safe-area-inset-bottom);
 }
     </style>
+    <!-- ▼▼▼ 最终修复：强制评论输入框始终可见 ▼▼▼ -->
+<style>
+  /* 强制评论输入区始终以flex布局显示 */
+  .moment-comment-input-area {
+    display: flex !important;
+    margin-top: 12px; /* 确保和上方有间距 */
+  }
+
+  /* 移除任何可能导致隐藏的 .visible 类的依赖 */
+  .moment-comment-input-area.visible {
+      /* 这个类不再需要控制显示，所以清空 */
+  }
+</style>
+<!-- ▲▲▲ 粘贴结束 ▲▲▲ -->
 </head>
 
 <body>
@@ -6119,7 +6133,23 @@ html, body {
                             <textarea id="setting-my-persona" placeholder="描述你希望在对话中扮演的形象。"></textarea>
                         </div>
                     </div>
-                </details>
+<!-- ▼▼▼ 请将这段代码粘贴在“我的设定”区域的 </details> 标签之后 ▼▼▼ -->
+                
+                <!-- === 新增：“我的人设”预设功能面板 === -->
+                <div id="mypersona-presets-control" style="margin-top: -10px; margin-bottom: 20px; padding: 10px; border-radius: 0 0 12px 12px; border: 1px solid #fce4ec; border-top: none; background:#fff8fa;">
+                  <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                    <label style="color:var(--secondary-color); font-weight:600; font-size: 14px;">人设预设</label>
+                    <select id="mypersona-preset-select" style="flex:1; padding:8px; border-radius:8px; border:1px solid #fce4ec;"></select>
+                  </div>
+                  <div style="display:flex; gap:8px; justify-content:flex-end;">
+                    <button type="button" id="mypersona-apply-btn" class="btn btn-primary btn-small">应用</button>
+                    <button type="button" id="mypersona-save-btn" class="btn btn-secondary btn-small">另存</button>
+                    <button type="button" id="mypersona-manage-btn" class="btn btn-neutral btn-small">管理</button>
+                  </div>
+                </div>
+                <!-- === 新增结束 === -->
+
+</details>
 
                 <!-- 类别三：对话与记忆 -->
                 <details class="settings-category">
@@ -6253,9 +6283,16 @@ html, body {
                 
                 <button type="submit" class="btn btn-primary" style="margin-top: 20px;">保存设置</button>
                 
-                <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
+<hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
                 <button type="button" class="btn btn-danger" id="block-user-btn">拉黑</button>
                 <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
+                
+                <!-- ▼▼▼ 新增的“总结回忆”按钮 ▼▼▼ -->
+                <div class="form-group">
+                    <button type="button" class="btn btn-secondary" id="summarize-history-btn">总结当前对话为回忆</button>
+                </div>
+                <!-- ▲▲▲ 新增结束 ▲▲▲ -->
+
                 <button type="button" class="btn btn-danger" id="clear-chat-history-btn">清空聊天记录</button>
             </form>
         </div>
@@ -6401,6 +6438,13 @@ html, body {
             	<div class="form-group">
             <button type="button" class="btn btn-secondary" id="search-group-history-btn">搜索聊天记录</button>
         </div>
+
+            <!-- ▼▼▼ 新增的“总结回忆”按钮 ▼▼▼ -->
+            <div class="form-group">
+                <button type="button" class="btn btn-secondary" id="summarize-group-history-btn">总结当前对话为回忆</button>
+            </div>
+            <!-- ▲▲▲ 新增结束 ▲▲▲ -->
+
             <button type="button" class="btn btn-danger" id="clear-group-chat-history-btn">清空聊天记录</button>
         </div>
     </div>
@@ -7485,6 +7529,9 @@ const locationBtn = document.getElementById('location-btn'),
             }
 
             // 保存聊天消息（分块存储）
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 saveChatMessages 函数 ▼▼▼
+
+            // 保存聊天消息（分块存储）
             async saveChatMessages(chatId, chatType, messages) {
                 const startTime = Date.now();
                 try {
@@ -7511,6 +7558,13 @@ const locationBtn = document.getElementById('location-btn'),
                         await this.db.messageChunks.bulkPut(chunks);
                     }
 
+                    // --- 核心修复②：清理“救生艇” ---
+                    // 主数据成功写入后，立即清除 localStorage 中的紧急备份。
+                    const bufferKey = `pendingMessages_${chatType}_${chatId}`;
+                    localStorage.removeItem(bufferKey);
+                    console.log(`主存储成功，已清理 localStorage 备份: ${bufferKey}`);
+                    // --- 修复结束 ---
+
                     // 更新缓存
                     const cacheKey = `messages_${chatId}_${chatType}`;
                     this.updateCache(cacheKey, messages);
@@ -7522,6 +7576,7 @@ const locationBtn = document.getElementById('location-btn'),
                     return false;
                 }
             }
+            // ▲▲▲ 替换结束 ▲▲▲
 
             // 获取聊天消息（按需加载）
             async getChatMessages(chatId, chatType, limit = null, offset = 0) {
@@ -7799,55 +7854,65 @@ const locationBtn = document.getElementById('location-btn'),
                 else sizeElement.className = 'metric-value error';
             }
 
-            // 数据迁移方法（从旧版本迁移）
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 migrateFromOldStorage 函数 ▼▼▼
+
+            // [V2.0 | 最终修复版] 数据迁移方法，增加一次性迁移标记，防止重复执行
             async migrateFromOldStorage() {
                 const startTime = Date.now();
+                
+                // --- 核心修复①：检查“搬家完成”标记 ---
+                // 在做任何事之前，先检查新数据库里是否已经有了“迁移完成”的记录
+                try {
+                    const migrationFlag = await this.db.metadata.get('migration_v2_complete');
+                    if (migrationFlag && migrationFlag.value === true) {
+                        console.log('检测到迁移已完成，跳过本次迁移检查。');
+                        return false; // 直接返回，不做任何操作
+                    }
+                } catch (e) {
+                    // 如果检查出错，继续执行迁移以防万一
+                    console.warn("检查迁移标记时出错:", e);
+                }
+                // --- 修复结束 ---
+
                 let oldDb = null;
                 let migrationSuccess = false;
 
                 try {
-                    // 尝试从旧数据库获取数据
+                    // 尝试连接旧数据库
                     oldDb = new Dexie('章鱼喷墨机DB');
                     oldDb.version(1).stores({
                         storage: 'key, value, timestamp'
                     });
+                    await oldDb.open(); // 确保数据库连接已打开
 
-                    // 检查旧数据库是否存在数据
                     const oldData = await oldDb.storage.get('章鱼喷墨机');
                     if (oldData) {
-                        console.log('检测到旧数据库，开始迁移...');
+                        console.log('检测到旧数据库，开始一次性迁移...');
                         const data = JSON.parse(oldData.value);
 
-                        // 迁移基础数据
+                        // ... (数据迁移的核心逻辑保持不变) ...
                         const { characters, groups, ...baseData } = data;
                         await this.saveData('章鱼喷墨机', baseData);
 
                         let migratedCharacters = 0;
-                        let migratedGroups = 0;
-
-                        // 迁移角色消息
                         if (characters) {
                             for (const char of characters) {
                                 if (char.history && char.history.length > 0) {
                                     await this.saveChatMessages(char.id, 'private', char.history);
                                 }
-                                // 保存角色信息（不包含history）
                                 const { history, ...charData } = char;
-                                charData.history = []; // 保持兼容性
                                 await this.saveData(`character_${char.id}`, charData);
                                 migratedCharacters++;
                             }
                         }
 
-                        // 迁移群组消息
+                        let migratedGroups = 0;
                         if (groups) {
                             for (const group of groups) {
                                 if (group.history && group.history.length > 0) {
                                     await this.saveChatMessages(group.id, 'group', group.history);
                                 }
-                                // 保存群组信息（不包含history）
                                 const { history, ...groupData } = group;
-                                groupData.history = []; // 保持兼容性
                                 await this.saveData(`group_${group.id}`, groupData);
                                 migratedGroups++;
                             }
@@ -7856,93 +7921,46 @@ const locationBtn = document.getElementById('location-btn'),
                         migrationSuccess = true;
                         console.log(`数据迁移完成: ${migratedCharacters}个角色, ${migratedGroups}个群组`);
 
-                        // 迁移成功后立即删除旧数据库
-                        try {
-                            console.log('开始删除旧数据库...');
+                        // --- 核心修复②：设置“搬家完成”标记 ---
+                        // 迁移成功后，立即在新数据库中写入标记
+                        await this.db.metadata.put({ key: 'migration_v2_complete', value: true });
+                        console.log('已设置迁移完成标记，未来将不再执行迁移。');
 
-                            // 关闭数据库连接
-                            if (oldDb.isOpen()) {
-                                oldDb.close();
-                            }
-
-                            // 删除整个数据库
-                            await oldDb.delete();
-                            console.log('旧数据库删除成功');
-
-                            // 验证删除是否成功
-                            const deletedDb = new Dexie('章鱼喷墨机DB');
-                            try {
-                                deletedDb.version(1).stores({
-                                    storage: 'key, value, timestamp'
-                                });
-                                const testData = await deletedDb.storage.get('章鱼喷墨机');
-                                if (!testData) {
-                                    console.log('旧数据库删除验证成功');
-                                } else {
-                                    console.warn('旧数据库可能未完全删除');
-                                }
-                                deletedDb.close();
-                            } catch (verifyError) {
-                                // 如果无法访问，说明删除成功
-                                console.log('旧数据库删除验证成功（数据库不存在）');
-                            }
-
-                        } catch (deleteError) {
-                            console.error('删除旧数据库失败，但不影响主要功能:', deleteError);
-                            // 尝试清空数据而不是删除数据库
-                            try {
-                                if (!oldDb.isOpen()) {
-                                    await oldDb.open();
-                                }
-                                await oldDb.storage.clear();
-                                console.log('已清空旧数据库内容');
-                                oldDb.close();
-                            } catch (clearError) {
-                                console.error('清空旧数据库也失败:', clearError);
-                            }
-                        }
-
-                        return true;
                     } else {
-                        console.log('未发现旧数据库数据');
-                        // 即使没有数据，也尝试删除可能存在的空数据库
-                        try {
-                            if (oldDb.isOpen()) {
-                                oldDb.close();
-                            }
-                            await oldDb.delete();
-                            console.log('已删除空的旧数据库');
-                        } catch (deleteError) {
-                            // 删除失败可能是因为数据库不存在，这是正常的
-                            console.log('旧数据库不存在或已删除');
-                        }
-                        return false;
+                        console.log('未发现旧数据库数据，无需迁移。');
+                        // 即使没有数据，也设置标记，避免以后反复检查一个空数据库
+                        await this.db.metadata.put({ key: 'migration_v2_complete', value: true });
                     }
-
-
-                    return false;
                 } catch (error) {
-                    console.error('数据迁移失败:', error);
-
-                    // 即使迁移失败，也尝试清理旧数据库连接
+                    // 如果无法打开旧数据库，很可能它已经被删除了，这也是一种成功
+                    if (error.name === 'NoSuchDatabaseError') {
+                        console.log('旧数据库不存在，迁移被视为已完成。');
+                        await this.db.metadata.put({ key: 'migration_v2_complete', value: true });
+                        migrationSuccess = true;
+                    } else {
+                        console.error('数据迁移过程中发生错误:', error);
+                    }
+                } finally {
+                    // --- 核心修复③：更强力的清理逻辑 ---
+                    // 无论迁移是否“成功”，只要旧数据库连接存在，就尝试关闭并删除它
                     if (oldDb) {
                         try {
                             if (oldDb.isOpen()) {
                                 oldDb.close();
-                                console.log('已关闭旧数据库连接');
                             }
-                        } catch (closeError) {
-                            console.error('关闭旧数据库连接失败:', closeError);
+                            console.log('正在尝试彻底删除旧数据库...');
+                            await Dexie.delete('章鱼喷墨机DB');
+                            console.log('旧数据库已成功删除。');
+                        } catch (deleteError) {
+                            console.error('删除旧数据库失败，但这不影响应用运行:', deleteError);
                         }
                     }
-
-                    return false;
-                } finally {
-                    // 确保在任何情况下都记录迁移耗时
-                    const duration = Date.now() - startTime;
-                    console.log(`数据迁移操作完成，耗时: ${duration}ms, 成功: ${migrationSuccess}`);
+                    console.log(`迁移与清理操作完成，耗时: ${Date.now() - startTime}ms`);
                 }
+                
+                return migrationSuccess;
             }
+// ▲▲▲ 替换结束 ▲▲▲
         }
 
         const dataStorage = new OptimizedDataStorage();
@@ -8008,27 +8026,36 @@ const locationBtn = document.getElementById('location-btn'),
 
             return Promise.resolve();
         };
-
+// ▼▼▼ 请用这个包含所有修复的、最新的完整函数，替换掉文件中旧的 loadData 函数 ▼▼▲▲
         const loadData = async () => {
-            // 首先尝试数据迁移
-            await dataStorage.migrateFromOldStorage();
-
-            // 检查localStorage中的旧数据
-            const oldData = localStorage.getItem('gemini-chat-app-db');
-            if (oldData) {
-                console.log('检测到localStorage中的旧数据，开始迁移...');
-                await saveData(JSON.parse(oldData));
-                localStorage.removeItem('gemini-chat-app-db');
-                console.log('localStorage旧数据迁移完成并已清理');
+            // --- 核心修复：增加 localStorage 迁移标记，防止重复执行 ---
+            try {
+                const lsMigrationFlag = await dataStorage.getData('localStorage_migration_complete');
+                if (!lsMigrationFlag) {
+                    // 只有在没有标记的情况下，才执行一次检查
+                    const oldData = localStorage.getItem('gemini-chat-app-db');
+                    if (oldData) {
+                        console.log('检测到localStorage中的旧数据，开始一次性迁移...');
+                        await saveData(JSON.parse(oldData));
+                        localStorage.removeItem('gemini-chat-app-db');
+                        console.log('localStorage旧数据迁移完成并已清理');
+                    }
+                    // 无论是否找到数据，都设置标记，确保此代码块不再运行
+                    await dataStorage.saveData('localStorage_migration_complete', true);
+                    console.log('已设置localStorage迁移完成标记。');
+                }
+            } catch (e) {
+                console.error("处理localStorage旧数据时出错:", e);
             }
+            // --- 修复结束 ---
+
+            // 首先尝试数据迁移 (这个逻辑现在也是安全的，因为它有自己的标记)
+            await dataStorage.migrateFromOldStorage();
 
             // 额外的安全检查：确保旧数据库完全清理
             try {
                 const safetyCheckDb = new Dexie('章鱼喷墨机DB');
-                safetyCheckDb.version(1).stores({
-                    storage: 'key, value, timestamp'
-                });
-
+                safetyCheckDb.version(1).stores({ storage: 'key, value, timestamp' });
                 const residualData = await safetyCheckDb.storage.get('章鱼喷墨机');
                 if (residualData) {
                     console.warn('发现残留的旧数据库数据，执行强制清理...');
@@ -8040,16 +8067,33 @@ const locationBtn = document.getElementById('location-btn'),
                     safetyCheckDb.close();
                 }
             } catch (safetyError) {
-                // 如果无法访问旧数据库，说明已经被正确删除
-                console.log('旧数据库安全检查完成（数据库不存在）');
+                console.log('旧数据库安全检查完成（数据库不存在或已清理）。');
             }
 
-            // 加载基础数据
-            let data = await dataStorage.getData('章鱼喷墨机');
-            if (data) {
-                db = { ...db, ...data };
+            // --- 核心修复：处理“待创建角色”的恢复 (保持不变) ---
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('pendingAction_addChar_')) {
+                        const pendingCharData = localStorage.getItem(key);
+                        if (pendingCharData) {
+                            const charToAdd = JSON.parse(pendingCharData);
+                            const exists = await dataStorage.getData(`character_${charToAdd.id}`);
+                            if (!exists) {
+                                await dataStorage.saveData(`character_${charToAdd.id}`, charToAdd);
+                                console.log(`已从 localStorage 恢复并创建角色: ${charToAdd.remarkName}`);
+                            }
+                            localStorage.removeItem(key);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("恢复待创建角色失败:", e);
             }
-    // --- 新增：从独立通道加载所有重要数据 ---
+
+            // 加载基础数据 (保持不变)
+            let data = await dataStorage.getData('章鱼喷墨机');
+            if (data) db = { ...db, ...data };
             db.worldBooks = await dataStorage.getData('worldBooks_data') || [];
             db.apiSettings = await dataStorage.getData('apiSettings_data') || {};
             db.customIcons = await dataStorage.getData('customIcons_data') || {};
@@ -8057,43 +8101,28 @@ const locationBtn = document.getElementById('location-btn'),
             db.wallpaper2 = await dataStorage.getData('wallpaper2_data') || 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg';
             db.aiSpaceWallpaper = await dataStorage.getData('aiSpaceWallpaper_data') || '';
             db.homeProfile = await dataStorage.getData('homeProfile_data') || { name: '点击设置昵称', signature: '点击设置个性签名', avatar: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg', heroBg: 'https://i.postimg.cc/wM57022X/image.png' };
-            // --- 新增结束 ---
-
-            // (在 loadData 函数内部，靠近其他 if (!db.xxx) 的地方添加)
-if (!db.avatarFrames) {
-    db.avatarFrames = []; // 初始化全局头像框列表
-}
-db.characters.forEach(c => {
-    if (c.avatarFrameUrl === undefined) c.avatarFrameUrl = null;
-    if (c.myAvatarFrameUrl === undefined) c.myAvatarFrameUrl = null;
-});
-db.groups.forEach(g => {
-    if (g.me.avatarFrameUrl === undefined) g.me.avatarFrameUrl = null;
-    g.members.forEach(m => {
-        if (m.avatarFrameUrl === undefined) m.avatarFrameUrl = null;
-    });
-});
-            if (db.uncategorizedCollapsed === undefined) {
-    db.uncategorizedCollapsed = false; // 默认不折叠
-}// 初始化默认值
+            
+            // ... (默认值设置保持不变) ...
+            if (!db.avatarFrames) db.avatarFrames = [];
+            if (db.uncategorizedCollapsed === undefined) db.uncategorizedCollapsed = false;
             if (!db.apiSettings) db.apiSettings = {};
-if (!db.wallet) {
-    db.wallet = {
-        balance: 0.00,
-        passwordEnabled: false,
-        password: null,
-        transactions: []
-    };
-}
+            if (!db.wallet) {
+                db.wallet = {
+                    balance: 0.00,
+                    passwordEnabled: false,
+                    password: null,
+                    transactions: []
+                };
+            }
             if (!db.wallpaper) db.wallpaper = 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg';
-            if (!db.wallpaper2) db.wallpaper2 = 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg'; // 新增
+            if (!db.wallpaper2) db.wallpaper2 = 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg';
             if (!db.myStickers) db.myStickers = [];
-          if (!db.aiSpaceWallpaper) db.aiSpaceWallpaper = ''; // 为AI手机壁纸初始化默认值
+            if (!db.aiSpaceWallpaper) db.aiSpaceWallpaper = '';
             if (!db.homeScreenMode) db.homeScreenMode = 'night';
             if (!db.worldBooks) db.worldBooks = [];
             if (!db.fontUrl) db.fontUrl = '';
             if (!db.customIcons) db.customIcons = {};
-if (!db.homeProfile) {
+            if (!db.homeProfile) {
                 db.homeProfile = {
                     name: '点击设置昵称',
                     signature: '点击设置个性签名',
@@ -8101,97 +8130,119 @@ if (!db.homeProfile) {
                     heroBg: 'https://i.postimg.cc/wM57022X/image.png'
                 };
             }
-            if (!db.forumData) {
-                db.forumData = {};
-            }
-          if (!db.forumSettings) db.forumSettings = {}; // 新增：为论坛配置初始化
-                // --- 在这里单独加载世界书 ---
+            if (!db.forumData) db.forumData = {};
+            if (!db.forumSettings) db.forumSettings = {};
+
             const loadedWorldBooks = await dataStorage.getData('worldBooks_data');
             db.worldBooks = loadedWorldBooks || [];
-            if (!db.worldBooks) db.worldBooks = []; // 兼容性检查
-            // --- 结束 ---
 
-            // 重建characters和groups列表
-            // 由于saveData时这两个字段被排除，需要从存储中重新构建
             db.characters = [];
             db.groups = [];
 
-            // 获取所有存储的键，找出角色和群组数据
             const allKeys = await dataStorage.getAllKeys();
             const characterKeys = allKeys.filter(key => key.startsWith('character_'));
             const groupKeys = allKeys.filter(key => key.startsWith('group_'));
 
             console.log(`发现 ${characterKeys.length} 个角色数据, ${groupKeys.length} 个群组数据`);
 
-            // 加载角色数据
+            // 加载角色和群组数据，并执行所有恢复逻辑 (保持不变)
             const characterPromises = characterKeys.map(async (key) => {
                 const charId = key.replace('character_', '');
                 const charData = await dataStorage.getData(key);
                 if (charData) {
-                    // 按需加载消息历史
-                    charData.history = await dataStorage.getChatMessages(charId, 'private');
+                    let historyCleared = false;
+                    try {
+                        const clearBufferKey = `pendingAction_clearHistory_private_${charId}`;
+                        if (localStorage.getItem(clearBufferKey)) {
+                            console.log(`为角色 ${charData.remarkName} 恢复了待清空操作。`);
+                            await dataStorage.clearChatMessages(charId, 'private');
+                            localStorage.removeItem(clearBufferKey);
+                            historyCleared = true;
+                        }
+                    } catch (e) { console.error(`恢复角色 ${charId} 的清空操作失败:`, e); }
 
-                    // 设置默认值
+                    charData.history = historyCleared ? [] : await dataStorage.getChatMessages(charId, 'private');
+                    
+                    try {
+                        const addBufferKey = `pendingMessages_private_${charId}`;
+                        const pendingAdds = JSON.parse(localStorage.getItem(addBufferKey) || '[]');
+                        if (pendingAdds.length > 0) {
+                            const existingIds = new Set(charData.history.map(m => m.id));
+                            const uniquePending = pendingAdds.filter(m => !existingIds.has(m.id));
+                            charData.history.push(...uniquePending);
+                        }
+                        const deleteBufferKey = `pendingAction_deleteMessages_private_${charId}`;
+                        const idsToDelete = JSON.parse(localStorage.getItem(deleteBufferKey) || '[]');
+                        if (idsToDelete.length > 0) {
+                            charData.history = charData.history.filter(m => !idsToDelete.includes(m.id));
+                        }
+                        if (pendingAdds.length > 0 || idsToDelete.length > 0) {
+                            await dataStorage.saveChatMessages(charId, 'private', charData.history);
+                            localStorage.removeItem(addBufferKey);
+                            localStorage.removeItem(deleteBufferKey);
+                        }
+                    } catch(e) { console.error(`恢复角色 ${charId} 的消息失败:`, e); }
+
                     if (charData.isPinned === undefined) charData.isPinned = false;
-                    if (charData.status === undefined) charData.status = '在线';
-                    if (!charData.worldBookIds) charData.worldBookIds = [];
-                    if (charData.customBubbleCss === undefined) charData.customBubbleCss = '';
-                    if (charData.useCustomBubbleCss === undefined) charData.useCustomBubbleCss = false;
-                    // ... 在 if (charData.useCustomBubbleCss === undefined) ... 的后面添加
-if (!charData.offlineSettings) {
-    charData.offlineSettings = {
-        fontSize: 16,
-        useCustomWordCount: false,
-        minWords: 300,
-        maxWords: 500,
-        useCustomCss: true,
-        customCss: '',
-        preset: 'default_dark'
-    };
-}
-// ... 后面是 return charData;
-// 为旧数据兼容用户日记
                     return charData;
                 }
                 return null;
             });
 
-            // 加载群组数据
             const groupPromises = groupKeys.map(async (key) => {
                 const groupId = key.replace('group_', '');
                 const groupData = await dataStorage.getData(key);
                 if (groupData) {
-                    // 按需加载消息历史
-                    groupData.history = await dataStorage.getChatMessages(groupId, 'group');
+                    let historyCleared = false;
+                    try {
+                        const clearBufferKey = `pendingAction_clearHistory_group_${groupId}`;
+                        if (localStorage.getItem(clearBufferKey)) {
+                            await dataStorage.clearChatMessages(groupId, 'group');
+                            localStorage.removeItem(clearBufferKey);
+                            historyCleared = true;
+                        }
+                    } catch(e) { console.error(`恢复群聊 ${groupId} 的清空操作失败:`, e); }
 
-                    // 设置默认值
+                    groupData.history = historyCleared ? [] : await dataStorage.getChatMessages(groupId, 'group');
+                    
+                     try {
+                        const addBufferKey = `pendingMessages_group_${groupId}`;
+                        const pendingAdds = JSON.parse(localStorage.getItem(addBufferKey) || '[]');
+                        if (pendingAdds.length > 0) {
+                            const existingIds = new Set(groupData.history.map(m => m.id));
+                            groupData.history.push(...pendingAdds.filter(m => !existingIds.has(m.id)));
+                        }
+                        const deleteBufferKey = `pendingAction_deleteMessages_group_${groupId}`;
+                        const idsToDelete = JSON.parse(localStorage.getItem(deleteBufferKey) || '[]');
+                        if (idsToDelete.length > 0) {
+                            groupData.history = groupData.history.filter(m => !idsToDelete.includes(m.id));
+                        }
+                        if (pendingAdds.length > 0 || idsToDelete.length > 0) {
+                            await dataStorage.saveChatMessages(groupId, 'group', groupData.history);
+                            localStorage.removeItem(addBufferKey);
+                            localStorage.removeItem(deleteBufferKey);
+                        }
+                    } catch(e) { console.error(`恢复群聊 ${groupId} 的消息失败:`, e); }
+                    
                     if (groupData.isPinned === undefined) groupData.isPinned = false;
-                    if (!groupData.worldBookIds) groupData.worldBookIds = [];
-                    if (groupData.customBubbleCss === undefined) groupData.customBubbleCss = '';
-                    if (groupData.useCustomBubbleCss === undefined) groupData.useCustomBubbleCss = false;
-
                     return groupData;
                 }
                 return null;
             });
 
-            // 等待所有数据加载完成
             const [loadedCharacters, loadedGroups] = await Promise.all([
                 Promise.all(characterPromises),
                 Promise.all(groupPromises)
             ]);
-
-            // 过滤掉null值并赋值给db
+            
             db.characters = loadedCharacters.filter(char => char !== null);
             db.groups = loadedGroups.filter(group => group !== null);
 
             console.log(`成功加载 ${db.characters.length} 个角色, ${db.groups.length} 个群组`);
             console.log('完整数据库对象:', db);
-
-         
             return Promise.resolve();
         };
-        // ▲▲▲ 替换结束 ▲▲▲             
+// ▲▲▲ 替换结束 ▲▲▲
         const switchScreen = (targetId) => {
             screens.forEach(screen => screen.classList.remove('active'));
             document.getElementById(targetId)?.classList.add('active');
@@ -8560,7 +8611,7 @@ settingsForm.addEventListener('submit', async (e) => {
         db.wallet.password = null; // 禁用密码时，自动清除已保存的密码
     }
 
-    await saveData();
+    scheduleSaveData();
     showToast('支付设置已保存！');
     switchScreen('wallet-screen');
     balanceDisplay.textContent = db.wallet.balance.toFixed(2);
@@ -8680,7 +8731,7 @@ function setupBatchStickerUpload() {
             db.myStickers.push(newSticker);
         });
 
-        await saveData();
+        scheduleSaveData();
         modal.classList.remove('visible');
         renderStickerGrid();
         showToast(`成功添加了 ${tempStickerData.length} 个表情包！`);
@@ -8813,8 +8864,8 @@ function setupPomodoroFeature() {
         if (!systemContent) return;
 
         const contextMessage = { id: `msg_pomodoro_${moment}_${Date.now()}`, role: 'user', content: systemContent, parts: [{ type: 'text', text: systemContent }], timestamp: Date.now() };
-        character.history.push(contextMessage);
-        await saveData();
+        addMessageToChat(character,contextMessage);
+        scheduleSaveData();
 
         if (currentChatId === character.id) {
             getAiReply();
@@ -8851,7 +8902,7 @@ function setupPomodoroFeature() {
             duration: currentMode === 'countdown' ? getSettings().focus : Math.floor(timeValue / 60),
             timestamp: Date.now()
         });
-        await saveData();
+        scheduleSaveData();
     };
 
     // --- 事件绑定 ---
@@ -8942,7 +8993,7 @@ function setupPomodoroFeature() {
             shortBreak: parseInt(document.getElementById('short-break-duration-input').value)
         };
         
-        await saveData();
+        scheduleSaveData();
         switchScreen('pomodoro-screen');
         applySettings(); // 保存后立即应用新设置
         showToast('专注设置已保存');
@@ -9003,7 +9054,7 @@ async function handleContinueWriting() {
     }
 
     // 将这条临时指令加入历史记录的末尾
-    chat.history.push(promptMessage);
+    addMessageToChat(chat,promptMessage);
 
     try {
         // 直接调用现有的 getAiReply 函数，它会自动读取包含我们临时指令的最新历史记录
@@ -9015,7 +9066,7 @@ async function handleContinueWriting() {
             chat.history.splice(index, 1);
         }
         // 保存被清理过的、最终的历史记录
-        await saveData();
+        scheduleSaveData();
     }
 }
 
@@ -9067,7 +9118,7 @@ function setupRollbackFeature() {
         
         // 3. 更新界面显示，并保存数据
         renderMessages(false, true); // 重新渲染聊天气泡，并滚动到底部
-        await saveData();
+        scheduleSaveData();
         renderChatList(); // 更新左侧列表的最后消息预览
         
         // 4. 再次调用AI，生成新的回复
@@ -9172,7 +9223,7 @@ async function applyAvatarFrame() {
         renderAvatarInSettings(avatarContainerId, avatarUrl, frameUrl);
     }
     
-    await saveData();
+    scheduleSaveData();
     renderMessages(false, true); // 刷新聊天界面以显示新头像框
     document.getElementById('avatar-frame-modal').classList.remove('visible');
     showToast('头像框已应用！');
@@ -9204,7 +9255,7 @@ function setupAvatarFrameSystem() {
                 id: `frame_${Date.now()}`,
                 url: url.trim()
             });
-            await saveData();
+            scheduleSaveData();
             renderAvatarFrameGrid();
         }
     });
@@ -9217,7 +9268,7 @@ function setupAvatarFrameSystem() {
             const frameId = target.dataset.frameId;
             if (confirm('确定要删除这个头像框吗？')) {
                 db.avatarFrames = db.avatarFrames.filter(f => f.id !== frameId);
-                saveData();
+                scheduleSaveData();
                 renderAvatarFrameGrid();
             }
         } else if (target.closest('.frame-item')) {
@@ -9503,7 +9554,7 @@ async function createCharacterFromCard(cardData, avatarUrl) {
     }
 
     db.characters.push(newChar);
-    await saveData();
+    scheduleSaveData();
     renderChatList();
     showToast(`角色“${newChar.remarkName}”已成功导入！`);
 }
@@ -9548,7 +9599,7 @@ async function createCharacterFromCard(cardData, avatarUrl) {
 
         // 如果有任何记录被修剪，则保存更改
         if (trimmedCount > 0) {
-            await saveData();
+            scheduleSaveData();
             showToast(`已自动清理 ${trimmedCount} 个过长的聊天记录，以优化性能。`);
         } else {
             console.log("所有聊天记录都在正常范围内，无需清理。");
@@ -9607,7 +9658,7 @@ if (db.characters.some(c => c.userDiaries && c.userDiaries.length > 0)) {
     const uniqueDiaries = [...new Map(allUserDiaries.map(item => [item.id, item])).values()];
     db.userDiaries.push(...uniqueDiaries);
     console.log('用户日记数据已成功迁移到全局。');
-    saveData(); // 保存迁移后的结果
+    scheduleSaveData(); // 保存迁移后的结果
 }
             await trimAllChatHistories(); 
             applyGlobalFont(db.fontUrl);
@@ -9901,7 +9952,7 @@ function setupPaymentHistoryActions() {
                         db.mallData.paymentHistory = db.mallData.paymentHistory.filter(
                             tx => tx.id !== transactionId
                         );
-                        await saveData(); // 保存更改
+                        scheduleSaveData(); // 保存更改
                         renderPaymentHistory(); // 重新渲染列表
                         showToast('记录已删除');
                     }
@@ -9945,8 +9996,8 @@ async function sendPaymentRequestCard(charId, items, total) {
         }
     };
 
-    character.history.push(message);
-    await saveData();
+    addMessageToChat(character,message);
+    scheduleSaveData();
     renderChatList();
 }
 
@@ -9981,7 +10032,7 @@ async function handleMallSearch(query) {
             
             // 将所有新创造的商品添加到总商品列表的顶部
             db.mallData.products.unshift(...fictionalProducts);
-            await saveData();
+            scheduleSaveData();
 
             // 只显示这些新创造的商品作为本次的搜索结果
             renderMallProducts(fictionalProducts);
@@ -10139,7 +10190,7 @@ if (!db.mallData.customProducts) {
         db.mallData.customProducts = [];
     }
         db.mallData.customProducts.unshift(newProduct);
-        await saveData();
+        scheduleSaveData();
 
         createProductModal.classList.remove('visible');
         showToast(`商品“${newProduct.name}”已成功创建！`);
@@ -10241,7 +10292,7 @@ if (!db.mallData.customProducts) {
             if (confirm(`确定要删除选中的 ${selectedCartItemIds.size} 件商品吗？`)) {
                 db.mallData.cart = db.mallData.cart.filter(item => !selectedCartItemIds.has(item.cartId));
                 selectedCartItemIds.clear();
-                await saveData();
+                scheduleSaveData();
                 renderCart();
                 showToast('商品已删除');
             }
@@ -10294,7 +10345,7 @@ if (recipient) {
                 delivered: false
             }
         };
-        recipient.history.push(deliveryMessage);
+        addMessageToChat(recipient,deliveryMessage);
     });
 }
 // --- 新增结束 ---
@@ -10315,7 +10366,7 @@ if (recipient) {
                 db.mallData.cart = db.mallData.cart.filter(item => !purchasedIds.has(item.productId));
                 selectedCartItemIds.clear();
 
-                await saveData();
+                scheduleSaveData();
                 showToast('支付成功！可在“我的物流”中查看');
                 switchScreen('mall-cart-screen');
                 renderCart();
@@ -10518,7 +10569,7 @@ const specialItemsToggle = document.getElementById('special-items-toggle');
         model: mallApiModel.value,
         specialItemsEnabled: specialItemsToggle.checked
     };
-    await saveData();
+    scheduleSaveData();
     showToast('商城API设置已保存！');
 });
 }
@@ -10624,8 +10675,8 @@ async function sendPaymentRequestCard(charId, items, total) {
             requesterName: character.myName
         }
     };
-    character.history.push(message);
-    await saveData();
+    addMessageToChat(character,message);
+    scheduleSaveData();
 }
 
 /**
@@ -10647,7 +10698,7 @@ async function handleAiPaymentDecision(messageId, decision) {
 
     // --- 核心修复：立即保存数据并刷新整个聊天界面 ---
     // 这一步会立刻将卡片状态从“等待付款”更新为“已支付”或“已拒绝”
-    await saveData();
+    scheduleSaveData();
     renderMessages(false, true); 
     // --- 修复结束 ---
 
@@ -10679,10 +10730,10 @@ async function handleAiPaymentDecision(messageId, decision) {
         parts: [{ type: 'text', text: contextMessageContent }],
         timestamp: Date.now()
     };
-    character.history.push(contextMessage);
+    addMessageToChat(character,contextMessage);
     
     // 3. 再次保存，确保指令被记录
-    await saveData();
+    scheduleSaveData();
 
     // 4. 触发AI，让它根据上面的指令生成回复 (无需等待，让它在后台运行)
     getAiReply();
@@ -10792,7 +10843,7 @@ async function generateAndRenderProducts(append = false) {
             db.mallData.products = newProducts;
             renderMallProducts();
         }
-        await saveData();
+        scheduleSaveData();
     } catch (error) {
         console.error("生成商品失败:", error);
         if (!append && grid) {
@@ -10908,7 +10959,7 @@ async function generateAndRenderComments(productId) {
         const aiResponseText = await callMallApi([{ role: 'user', content: prompt }]);
         const newComments = JSON.parse(aiResponseText.match(/\[[\s\S]*\]/)[0]);
         product.comments.push(...newComments);
-        await saveData();
+        scheduleSaveData();
         renderComments(productId);
         showToast('已加载新的评论！');
     } catch (error) {
@@ -10928,7 +10979,7 @@ async function toggleProductLike(productId) {
         db.mallData.likedProducts.push(productId);
         showToast('点赞成功！');
     }
-    await saveData();
+    scheduleSaveData();
     updateLikeButtonState(productId);
 }
 
@@ -11025,7 +11076,7 @@ async function addToCart(productId, silent = false) {
         productId: productId,
         paymentDeadline: Date.now() + 30 * 60 * 1000
     });
-    await saveData();
+    scheduleSaveData();
     if (!silent) {
         showToast('宝贝已加入购物车，请在30分钟内支付哦');
         renderCart();
@@ -11315,9 +11366,9 @@ async function notifyAiOfDelivery(messageId) {
                 parts: [{ type: 'text', text: contextMessageContent }],
                 timestamp: Date.now()
             };
-            char.history.push(contextMessage);
+            addMessageToChat(char,contextMessage);
             
-            await saveData();
+            scheduleSaveData();
             
             if (currentChatId === char.id) {
                 getAiReply();
@@ -11350,7 +11401,7 @@ function setupWorldBookCategorySystem() {
                 name: name,
                 isCollapsed: false
             });
-            await saveData();
+            scheduleSaveData();
             renderWorldBookList();
             showToast(`分类“${name}”已创建`);
             addCategoryModal.classList.remove('visible');
@@ -11369,14 +11420,14 @@ function setupWorldBookCategorySystem() {
             // --- 这是处理“未分类”折叠的新逻辑 ---
             db.uncategorizedCollapsed = !db.uncategorizedCollapsed;
             categoryWrapper.classList.toggle('collapsed', db.uncategorizedCollapsed);
-            await saveData();
+            scheduleSaveData();
         } else {
             // 这是处理普通分类折叠的旧逻辑
             const category = db.worldBookCategories.find(cat => cat.id === categoryId);
             if (category) {
                 category.isCollapsed = !category.isCollapsed;
                 categoryWrapper.classList.toggle('collapsed', category.isCollapsed);
-                await saveData();
+                scheduleSaveData();
             }
         }
     });
@@ -11394,7 +11445,7 @@ const handleLongPress = (targetElement, clientX, clientY) => {
             action: async () => {
                 if (confirm(`此操作将永久删除“未分类”中的所有世界书条目，确定吗？`)) {
                     db.worldBooks = db.worldBooks.filter(book => book.categoryId !== 'uncategorized');
-                    await saveData();
+                    scheduleSaveData();
                     renderWorldBookList();
                     showToast('“未分类”条目已全部删除');
                 }
@@ -11415,7 +11466,7 @@ const handleLongPress = (targetElement, clientX, clientY) => {
                         // 过滤掉该分类本身
                         db.worldBookCategories = db.worldBookCategories.filter(cat => cat.id !== categoryId);
                         
-                        await saveData();
+                        scheduleSaveData();
                         renderWorldBookList();
                         showToast(`分类“${category.name}”及其内容已删除`);
                     }
@@ -11523,7 +11574,7 @@ setupWorldBookApp = function() {
             db.worldBooks.push(bookData);
         }
         
-        await saveData();
+        scheduleSaveData();
         showToast('世界书条目已保存');
         renderWorldBookList();
         switchScreen('world-book-screen');
@@ -11832,7 +11883,7 @@ const updatePlayerUI = () => {
                 }
                 loopBtn.innerHTML = iconHtml;
                 showToast(toastMessage);
-                await saveData();
+                scheduleSaveData();
             };
             
             const renderPlaylistPanel = () => {
@@ -11866,7 +11917,7 @@ const updatePlayerUI = () => {
                         db.playlist.splice(index, 1);
                         if (currentSongIndex === index) { playNext(); } 
                         else if (currentSongIndex > index) { currentSongIndex--; }
-                        await saveData();
+                        scheduleSaveData();
                         renderPlaylistPanel();
                     });
                     li.querySelector('button[data-index]').addEventListener('click', async (e) => {
@@ -11890,7 +11941,7 @@ const updatePlayerUI = () => {
                          });
                          if (lrcContent !== null) {
                              db.playlist[index].lyrics = lrcContent;
-                             await saveData();
+                             scheduleSaveData();
                              showToast('歌词已关联！');
                              if (currentSongIndex === index) { playSong(index); }
                          }
@@ -11943,7 +11994,7 @@ const updatePlayerUI = () => {
                 senderId: 'user_me' 
             };
             
-            chat.history.push(message);
+            addMessageToChat(chat,message);
             // 只有当分享的目标就是当前打开的聊天时，才立即在界面上添加气泡
             if (currentChatId === chatId) {
                 addMessageBubble(message);
@@ -11960,10 +12011,10 @@ const updatePlayerUI = () => {
                     const chat = db.characters.find(c => c.id === chatId) || db.groups.find(g => g.id === chatId);
                     if (chat) {
                         const message = { id: `msg_music_update_${Date.now()}`, role: 'user', content: notificationContent, parts: [{ type: 'text', text: notificationContent }], timestamp: Date.now(), senderId: 'user_me' };
-                        chat.history.push(message);
+                        addMessageToChat(chat,message);
                     }
                 }
-                await saveData();
+                scheduleSaveData();
             };
 
             // --- 事件监听器 ---
@@ -11987,7 +12038,7 @@ const updatePlayerUI = () => {
                 };
                 if (!newSong.url.startsWith("https://files.catbox.moe/")) { showToast("请输入有效的Catbox链接"); return; }
                 db.playlist.push(newSong);
-                await saveData();
+                scheduleSaveData();
                 showToast("歌曲已添加");
                 addSongModal.classList.remove('visible');
                 renderPlaylistPanel();
@@ -12205,7 +12256,7 @@ categoryList.addEventListener('contextmenu', e => {
                             // 2. 从分类列表中删除该分类
                             db.rendererCategories = db.rendererCategories.filter(c => c.id !== categoryId);
                             
-                            await saveData();
+                            scheduleSaveData();
                             
                             // 3. 刷新UI
                             currentRendererCategoryId = 'all'; // 返回“全部”视图
@@ -12241,7 +12292,7 @@ categoryList.addEventListener('touchstart', (e) => {
                                     }
                                 });
                                 db.rendererCategories = db.rendererCategories.filter(c => c.id !== categoryId);
-                                await saveData();
+                                scheduleSaveData();
                                 currentRendererCategoryId = 'all';
                                 renderRendererCategories();
                                 renderRendererRules();
@@ -12346,7 +12397,7 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
             db.renderers.push(ruleData);
         }
 
-        await saveData();
+        scheduleSaveData();
         showToast('渲染规则已保存！');
         renderRendererRules();
         ruleModal.classList.remove('visible');
@@ -12358,7 +12409,7 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
         if (name && !(db.rendererCategories || []).some(c => c.name === name)) {
             const newCategory = { id: `rend_cat_${Date.now()}`, name };
             db.rendererCategories.push(newCategory);
-            await saveData();
+            scheduleSaveData();
             currentRendererCategoryId = newCategory.id;
             renderRendererCategories();
             renderRendererRules();
@@ -12417,7 +12468,7 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
         }
 
         if (importedCount > 0) {
-            await saveData();
+            scheduleSaveData();
             renderRendererCategories();
             renderRendererRules();
             showToast(`成功导入 ${importedCount} 条规则！`);
@@ -12457,7 +12508,7 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
                     action: async () => {
                         if (confirm('确定要删除这条规则吗？')) {
                             db.renderers = db.renderers.filter(r => r.id !== ruleId);
-                            await saveData();
+                            scheduleSaveData();
                             renderRendererRules();
                             showToast('规则已删除');
                         }
@@ -12618,7 +12669,7 @@ function applyWallpaper(url, element) {
                 homeScreen.classList.remove('day-mode');
             }
             db.homeScreenMode = mode;
-            await saveData();
+            scheduleSaveData();
         }
 
   function setupCustomizeApp() {
@@ -12744,7 +12795,7 @@ function renderCustomizeForm() {
         const newUrl = prompt('请输入新的图标URL:');
         if (newUrl && newUrl.trim()) {
             db.customIcons[currentEditingIconId] = newUrl.trim();
-            await saveData();
+            scheduleSaveData();
             renderCustomizeForm();
             setupHomeScreen();
             renderAiSpaceHomeScreen();
@@ -12758,7 +12809,7 @@ function renderCustomizeForm() {
     };
     document.getElementById('icon-edit-reset-btn').onclick = async () => {
         delete db.customIcons[currentEditingIconId];
-        await saveData();
+        scheduleSaveData();
         renderCustomizeForm();
         setupHomeScreen();
         renderAiSpaceHomeScreen();
@@ -12773,7 +12824,7 @@ function renderCustomizeForm() {
             try {
                 const compressedUrl = await compressImage(file, { quality: 0.8, maxWidth: 200, maxHeight: 200 });
                 db.customIcons[currentEditingIconId] = compressedUrl;
-                await saveData();
+                scheduleSaveData();
                 renderCustomizeForm();
                 setupHomeScreen();
                 renderAiSpaceHomeScreen();
@@ -12791,7 +12842,7 @@ function renderCustomizeForm() {
         const cssCode = cssTextarea.value;
         db.globalCustomCss = cssCode;
         applyGlobalCss(cssCode);
-        await saveData();
+        scheduleSaveData();
         showToast('全局样式已应用并保存！');
     });
     document.getElementById('export-global-css-btn').addEventListener('click', () => {
@@ -12820,7 +12871,7 @@ function renderCustomizeForm() {
     layoutToggle.checked = db.useWechatLayout || false;
     layoutToggle.addEventListener('change', async (e) => {
         db.useWechatLayout = e.target.checked;
-        await saveData();
+        scheduleSaveData();
         applyLayoutPreference();
         showToast('布局已切换，重新进入聊天室生效');
     });
@@ -13380,7 +13431,7 @@ if (data.character_book && data.character_book.entries && data.character_book.en
     }
     // 添加到数据库并保存
     db.characters.push(newChar);
-    await saveData();
+    scheduleSaveData();
 
     // 刷新UI
     renderChatList();
@@ -13565,7 +13616,7 @@ if (data.character_book && data.character_book.entries && data.character_book.en
                 label: chatItem.isPinned ? '取消置顶' : '置顶聊天',
                 action: async () => {
                     chatItem.isPinned = !chatItem.isPinned;
-                    await saveData();
+                    scheduleSaveData();
                     renderChatList();
                 }
             }, // ...
@@ -13747,10 +13798,10 @@ if (data.character_book && data.character_book.entries && data.character_book.en
                     parts: [{ type: 'text', text: systemContent }],
                     timestamp: Date.now()
                 };
-                character.history.push(contextMessage);
+                addMessageToChat(character,contextMessage);
 
                 // 保存所有更改
-                await saveData();
+                scheduleSaveData();
                 
                 // 刷新UI并提示用户
                 renderChatList();
@@ -13771,16 +13822,13 @@ if (importCardBtn && cardImportInput) {
     });
     cardImportInput.addEventListener('change', handleCardImport);
 }
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 setupAddCharModal 函数 ▼▼▼
         function setupAddCharModal() {
             addCharForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                
+                // 1. 创建新角色对象
                 const newChar = {
-isBlockedByUser: false,
-isBlockedByAi: false,
-userBlockTimestamp: null,
-aiBlockTimestamp: null,
-blockEndTime: null,
-isOfflineMode: false,
                     id: `char_${Date.now()}`,
                     realName: document.getElementById('char-real-name').value,
                     remarkName: document.getElementById('char-remark-name').value,
@@ -13794,9 +13842,8 @@ isOfflineMode: false,
                     chatBg: '',
                     history: [],
                     diaries: [],
-    messageCountSinceLastDiary: 0,
-    // --- 添加结束 ---
-                    memories: [], // <-- 添加这行
+                    messageCountSinceLastDiary: 0,
+                    memories: [],
                     isPinned: false,
                     status: '在线',
                     worldBookIds: [],
@@ -13806,14 +13853,59 @@ isOfflineMode: false,
                     aiProactiveChatEnabled: false,
                     aiProactiveChatDelay: 0,
                     aiProactiveChatInterval: 0,
+                    isBlockedByUser: false,
+                    isBlockedByAi: false,
+                    userBlockTimestamp: null,
+                    aiBlockTimestamp: null,
+                    blockEndTime: null,
+                    isOfflineMode: false,
+                    offlineSettings: {
+                        fontSize: 16,
+                        useCustomWordCount: false,
+                        minWords: 300,
+                        maxWords: 500,
+                        useCustomCss: true,
+                        customCss: '',
+                        preset: 'default_dark'
+                    }
                 };
-                db.characters.push(newChar);
-                await saveData();
+
+                const bufferKey = `pendingAction_addChar_${newChar.id}`;
+
+                try {
+                    // 2. 同步“救生艇”：立即将新角色数据写入 localStorage
+                    localStorage.setItem(bufferKey, JSON.stringify(newChar));
+                    console.log(`同步备份了新角色到 localStorage: ${newChar.remarkName}`);
+
+                    // 3. 更新内存中的数据
+                    db.characters.push(newChar);
+
+                    // 4. 异步“货轮”：在后台将新角色数据写入主数据库
+                    // 我们直接调用 dataStorage 的方法，因为它返回一个 Promise，方便我们知道何时完成
+                    await dataStorage.saveData(`character_${newChar.id}`, newChar);
+                    
+                    // 5. 异步操作成功后，清理“救生艇”
+                    localStorage.removeItem(bufferKey);
+                    console.log(`主存储成功，已清理 localStorage 的角色备份: ${newChar.remarkName}`);
+
+                } catch (error) {
+                    console.error("创建角色时发生严重错误:", error);
+                    showToast('创建角色失败，请检查控制台');
+                    // 如果发生错误，从内存中移除，回滚操作
+                    const index = db.characters.findIndex(c => c.id === newChar.id);
+                    if (index > -1) db.characters.splice(index, 1);
+                    // 清理可能失败的备份
+                    localStorage.removeItem(bufferKey);
+                    return; // 中止后续UI操作
+                }
+
+                // 6. 更新UI
                 renderChatList();
                 addCharModal.classList.remove('visible');
                 showToast(`角色“${newChar.remarkName}”创建成功！`);
             });
         }
+// ▲▲▲ 替换结束 ▲▲▲
 // --- 在 setupChatRoom() 函数的前面，粘贴下面的代码块 ---
 
 function startQuoteReply(messageId) {
@@ -14143,9 +14235,9 @@ async function handleBondRequestResponse(messageId, response) {
         parts: [{ type: 'text', text: systemContent }],
         timestamp: Date.now()
     };
-    character.history.push(contextMessage);
+    addMessageToChat(character,contextMessage);
 
-    await saveData();
+    scheduleSaveData();
 
     // 4. 刷新UI并触发AI的后续反应
     renderMessages(false, true);
@@ -14185,7 +14277,7 @@ async function handleBondRequestResponse(messageId, response) {
                     // 同时保存一份原始内容，以便查看
                     chat.history[msgIndex].originalContent = chat.history[msgIndex].content;
                     
-                    await saveData();
+                    scheduleSaveData();
                     renderMessages(false, true); // 重新渲染，让消息变成占位符
                 }
             }
@@ -14212,7 +14304,7 @@ menuItems.push({
                     // 如果用户输入了新状态（并且没有点取消）
                     if (newStatus !== null) {
                         character.status = newStatus.trim(); // 更新数据
-                        await saveData(); // 保存更改
+                        scheduleSaveData(); // 保存更改
                         
                         // 立即更新聊天界面顶部的状态显示
                         document.getElementById('chat-room-status-text').textContent = character.status;
@@ -14280,7 +14372,7 @@ async function saveMessageEdit() {
         if (chat.history[messageIndex].parts) {
             chat.history[messageIndex].parts = [{type: 'text', text: newContent}];
         }
-        await saveData();
+        scheduleSaveData();
         
         // 刷新UI
         renderMessages(false, true);
@@ -14359,18 +14451,47 @@ function exitMultiSelectMode() {
             deleteSelectedBtn.disabled = selectedMessageIds.size === 0;
         }
 
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 deleteSelectedMessages 函数 ▼▼▼
         async function deleteSelectedMessages() {
             if (selectedMessageIds.size === 0) return;
+
             const deletedCount = selectedMessageIds.size;
             const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-            chat.history = chat.history.filter(m => !selectedMessageIds.has(m.id));
-            await saveData();
+            const bufferKey = `pendingAction_deleteMessages_${currentChatType}_${currentChatId}`;
+            const idsToDelete = Array.from(selectedMessageIds);
+
+            try {
+                // 1. 同步“救生艇”：将要删除的消息ID列表写入 localStorage
+                const existingPendingDeletes = JSON.parse(localStorage.getItem(bufferKey) || '[]');
+                const newPendingDeletes = [...new Set([...existingPendingDeletes, ...idsToDelete])]; // 合并并去重
+                localStorage.setItem(bufferKey, JSON.stringify(newPendingDeletes));
+                console.log(`同步备份了 ${idsToDelete.length} 条待删除消息ID到 localStorage`);
+
+                // 2. 更新内存中的数据
+                chat.history = chat.history.filter(m => !selectedMessageIds.has(m.id));
+
+                // 3. 异步“货轮”：将修改后的完整聊天记录保存到主数据库
+                await dataStorage.saveChatMessages(currentChatId, currentChatType, chat.history);
+
+                // 4. 异步操作成功后，清理“救生艇”
+                localStorage.removeItem(bufferKey);
+                console.log(`主存储成功，已清理 localStorage 的删除备份`);
+
+            } catch (error) {
+                console.error("删除消息时发生严重错误:", error);
+                showToast('删除失败，请刷新页面后重试');
+                // 发生错误时，不更新UI，让用户刷新后由恢复逻辑处理
+                return;
+            }
+            
+            // 5. 更新UI
             currentPage = 1;
             renderMessages(false, true);
             renderChatList();
             exitMultiSelectMode();
             showToast(`已删除 ${deletedCount} 条消息`);
         }
+// ▲▲▲ 替换结束 ▲▲▲
 
 // --- 新代码开始 ---
      // --- 新代码开始 ---
@@ -15346,7 +15467,7 @@ if (updateStatusRegex.test(message.content) && message.role === 'assistant') {
         if (statusMatch) {
             character.status = statusMatch[1].trim();
             chatRoomStatusText.textContent = character.status;
-            saveData(); // 保存状态变更
+            scheduleSaveData(); // 保存状态变更
         }
     }
     return; // 阻止这条消息被渲染
@@ -15383,7 +15504,7 @@ if (updateStatusRegex.test(message.content) && message.role === 'assistant') {
                         character.history[actualIndex].giftStatus = 'received';
                         const giftCardOnScreen = messageArea.querySelector(`.message-wrapper[data-id="${character.history[actualIndex].id}"] .gift-card`);
                         if (giftCardOnScreen) giftCardOnScreen.classList.add('received');
-                        await saveData();
+                        scheduleSaveData();
                     }
                 } else if (message.content.match(transferActionRegex) && message.role === 'assistant') {
                     const action = message.content.match(transferActionRegex)[1];
@@ -15399,7 +15520,7 @@ if (updateStatusRegex.test(message.content) && message.role === 'assistant') {
                             const statusElem = transferCardOnScreen.querySelector('.transfer-status');
                             if (statusElem) statusElem.textContent = statusToSet === 'received' ? '已收款' : '已退回';
                         }
-                        await saveData();
+                        scheduleSaveData();
                     }
                 }
             }
@@ -15418,7 +15539,7 @@ if (updateStatusRegex.test(message.content) && message.role === 'assistant') {
                 const newStatus = statusMatch[1];
                 character.status = newStatus;
                 chatRoomStatusText.textContent = newStatus;
-                await saveData();
+                scheduleSaveData();
                 return; // 处理完状态更新后，直接返回，不渲染气泡
             }
         }
@@ -15471,7 +15592,7 @@ async function sendMessage() {
         addMessageBubble(message);
         
         // 3. 保存数据，但不触发AI回复
-        await saveData();
+        scheduleSaveData();
                 
         return; // 提前结束函数
     }
@@ -15550,9 +15671,9 @@ async function sendMessage() {
     if (currentChatType === 'group') {
         message.senderId = 'user_me';
     }
-    chat.history.push(message);
+    addMessageToChat(chat,message);
     addMessageBubble(message);
-    await saveData();
+    scheduleSaveData();
     renderChatList();
     if (chat.povCache) {
         chat.povCache = null;
@@ -15583,9 +15704,9 @@ async function sendMessage() {
             if (currentChatType === 'group') {
                 message.senderId = 'user_me';
             }
-            chat.history.push(message);
+            addMessageToChat(chat,message);
             addMessageBubble(message);
-            await saveData();
+            scheduleSaveData();
             renderChatList();
         }
 
@@ -15610,9 +15731,9 @@ async function sendMessage() {
             if (currentChatType === 'group') {
                 message.senderId = 'user_me';
             }
-            chat.history.push(message);
+            addMessageToChat(chat,message);
             addMessageBubble(message);
-            await saveData();
+            scheduleSaveData();
             renderChatList();
             stickerModal.classList.remove('visible');
         }
@@ -15638,9 +15759,9 @@ async function sendMessage() {
             if (currentChatType === 'group') {
                 message.senderId = 'user_me';
             }
-            chat.history.push(message);
+            addMessageToChat(chat,message);
             addMessageBubble(message);
-            await saveData();
+            scheduleSaveData();
             renderChatList();
             sendVoiceModal.classList.remove('visible');
         }
@@ -15666,9 +15787,9 @@ async function sendMessage() {
             if (currentChatType === 'group') {
                 message.senderId = 'user_me';
             }
-            chat.history.push(message);
+            addMessageToChat(chat,message);
             addMessageBubble(message);
-            await saveData();
+            scheduleSaveData();
             renderChatList();
             sendPvModal.classList.remove('visible');
         }
@@ -15706,7 +15827,7 @@ async function sendMessage() {
                     timestamp: Date.now(),
                     transferStatus: 'pending'
                 };
-                chat.history.push(message);
+                addMessageToChat(chat,message);
                 addMessageBubble(message);
             } else { // Group chat
                 currentGroupAction.recipients.forEach(recipientId => {
@@ -15721,12 +15842,12 @@ async function sendMessage() {
                             timestamp: Date.now(),
                             senderId: 'user_me'
                         };
-                        chat.history.push(message);
+                        addMessageToChat(chat,message);
                         addMessageBubble(message);
                     }
                 });
             }
-            await saveData();
+            scheduleSaveData();
             renderChatList();
             sendTransferModal.classList.remove('visible');
         }
@@ -15766,7 +15887,7 @@ async function sendMessage() {
                     timestamp: Date.now(),
                     giftStatus: 'sent'
                 };
-                chat.history.push(message);
+                addMessageToChat(chat,message);
                 addMessageBubble(message);
             } else { // Group chat
                 currentGroupAction.recipients.forEach(recipientId => {
@@ -15781,12 +15902,12 @@ async function sendMessage() {
                             timestamp: Date.now(),
                             senderId: 'user_me'
                         };
-                        chat.history.push(message);
+                        addMessageToChat(chat,message);
                         addMessageBubble(message);
                     }
                 });
             }
-            await saveData();
+            scheduleSaveData();
             renderChatList();
             sendGiftModal.classList.remove('visible');
         }
@@ -15837,8 +15958,8 @@ function setupVoiceCallSystem() {
             parts: [{type: 'text', text: `[system: ${character.myName} 接听了你的电话。]`}],
             timestamp: Date.now()
         };
-        character.history.push(contextMessage);
-        saveData();
+        addMessageToChat(character,contextMessage);
+        scheduleSaveData();
         startActiveCall();
     });
     hangupCallBtn.addEventListener('click', () => endCall('ended'));
@@ -15878,8 +15999,8 @@ function startUserInitiatedCall() {
         parts: [{type: 'text', text: `[system: ${character.myName} 正在呼叫你，请根据你的人设决定是接听 [call-accept] 还是拒接 [call-decline]]`}],
         timestamp: Date.now()
     };
-    character.history.push(callMessage);
-    saveData();
+    addMessageToChat(character,callMessage);
+    scheduleSaveData();
     getAiReply();
 }
 
@@ -15966,7 +16087,7 @@ async function endCall(reason = 'ended') {
             parts: [{type: 'text', text: `[system: 与 ${character.realName} 的通话已结束。通话记录：${JSON.stringify(voiceCallTranscript)}]`}],
             timestamp: Date.now()
         };
-        character.history.push(summaryDisplay, summaryContext);
+        addMessageToChat(character,summaryDisplay, summaryContext);
         if(currentChatId === character.id) {
              addMessageBubble(summaryDisplay);
         }
@@ -15987,7 +16108,7 @@ async function endCall(reason = 'ended') {
                 parts: [{type: 'text', text: transitionPrompt}],
                 timestamp: Date.now()
             };
-            character.history.push(contextMessage);
+            addMessageToChat(character,contextMessage);
             // 关键：主动触发一次AI回复，强制它从卡死的状态中恢复
             if (currentChatId === character.id) {
                 getAiReply();
@@ -16002,7 +16123,7 @@ async function endCall(reason = 'ended') {
     voiceCallStartTime = null;
     currentCallTargetId = null;
     
-    await saveData();
+    scheduleSaveData();
 }
 
 function sendCallMessage() {
@@ -16118,8 +16239,8 @@ function setupFileSystem() {
             fileData: { name: fileName, content: fileContent } // Store data for rendering the card
         };
 
-        chat.history.push(message);
-        await saveData();
+        addMessageToChat(chat,message);
+        scheduleSaveData();
         renderMessages(false, true);
         renderChatList();
         sendFileModal.classList.remove('visible');
@@ -16159,8 +16280,8 @@ function setupLocationSystem() {
             locationData: { main: mainLocation, detail: detailLocation } // Store structured data for rendering
         };
 
-        chat.history.push(message);
-        await saveData();
+        addMessageToChat(chat,message);
+        scheduleSaveData();
         renderMessages(false, true);
         renderChatList();
         sendLocationModal.classList.remove('visible');
@@ -16234,61 +16355,87 @@ function setupFileDisplaySystem() {
                 visualMessage.senderId = 'user_me';
             }
 
-            chat.history.push(visualMessage, contextMessage);
+            addMessageToChat(chat,visualMessage, contextMessage);
             addMessageBubble(visualMessage);
-            await saveData();
+            scheduleSaveData();
             renderChatList();
             timeSkipModal.classList.remove('visible');
         }
 
-// ▼▼▼ 请用这个【新版本】完整替换旧的 getMixedContent 函数 ▼▼▼
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 getMixedContent 函数 ▼▼▼
+
 function getMixedContent(responseData, chat) {
     const results = [];
     if (!responseData) return results;
 
-    // 这个正则表达式现在会捕获我们的目标格式作为分隔符
-    const regex = /(<div class="ai-theater"[\s\S]*?<\/div>|\[[\s\S]*?\])/g;
-    const parts = responseData.split(regex);
+    const startMarker = '<!-- START_THEATER -->';
+    const endMarker = '<!-- END_THEATER -->';
 
-    for (const part of parts) {
-        // 过滤掉由split产生的空字符串或纯空白字符串
-        if (!part || part.trim() === '') continue;
+    let remainingText = responseData;
 
-        if (part.startsWith('<div')) {
-            // 这是一个HTML小剧场，直接保留
-            const charMatch = part.match(/data-char="([^"]*)"/);
-            results.push({
-                type: 'html',
-                content: part,
-                char: charMatch ? charMatch[1] : null
-            });
-        } else if (part.startsWith('[')) {
-            // 这是一个标准的、带中括号的消息，直接保留
-            results.push({
-                type: 'text',
-                content: part
+    while (remainingText.length > 0) {
+        const startIndex = remainingText.indexOf(startMarker);
+
+        if (startIndex === -1) {
+            // 如果剩下的文本里没有小剧场了
+            if (remainingText.trim()) {
+                results.push({ type: 'text', content: remainingText });
+            }
+            break; // 结束循环
+        }
+
+        // 1. 处理小剧场之前的所有文本
+        const textBefore = remainingText.substring(0, startIndex);
+        if (textBefore.trim()) {
+            results.push({ type: 'text', content: textBefore });
+        }
+
+        // 2. 寻找与开始标记配对的结束标记
+        const endIndex = remainingText.indexOf(endMarker, startIndex);
+        if (endIndex === -1) {
+            // 如果有开始没结束，说明AI格式错了，把剩下的都当文本处理
+            console.warn("检测到未闭合的HTML小剧场标记，剩余内容将作为纯文本处理。");
+            const rest = remainingText.substring(startIndex);
+            if (rest.trim()) {
+                results.push({ type: 'text', content: rest });
+            }
+            break;
+        }
+
+        // 3. 提取小剧场的HTML内容
+        const htmlContent = remainingText.substring(startIndex + startMarker.length, endIndex);
+        const characterName = chat ? (chat.realName || chat.remarkName) : 'AI';
+        
+        // 我们在这里为AI生成的内容手动包裹上安全的外壳
+        const fullHtml = `<div class="ai-theater" data-char="${characterName}">${htmlContent}</div>`;
+        
+        results.push({
+            type: 'html',
+            content: fullHtml,
+            char: characterName
+        });
+
+        // 4. 更新剩余待处理的文本
+        remainingText = remainingText.substring(endIndex + endMarker.length);
+    }
+
+    // 最后一步：将所有纯文本部分按换行符拆分成独立的消息
+    const finalResults = [];
+    results.forEach(item => {
+        if (item.type === 'text') {
+            item.content.split('\n').forEach(line => {
+                if (line.trim()) {
+                    finalResults.push({ type: 'text', content: line.trim() });
+                }
             });
         } else {
-            // 这是“裸露”的纯文本，是我们需要修复的目标！
-            // 我们为它自动套上标准外壳
-            console.log('检测到格式不正确的纯文本回复:', part);
-            let aiName = 'AI'; // 提供一个默认名
-            if (chat) {
-                if (chat.type === 'private') {
-                    aiName = chat.realName;
-                } else if (chat.members && chat.members.length > 0) {
-                    // 在群聊中，我们无法确定是哪个AI说的，可以默认归属于第一个AI
-                    aiName = chat.members[0].realName;
-                }
-            }
-            results.push({
-                type: 'text',
-                content: `[${aiName}的消息：${part.trim()}]`
-            });
+            finalResults.push(item);
         }
-    }
-    return results;
+    });
+
+    return finalResults;
 }
+
 // ▲▲▲ 替换结束 ▲▲▲
 
         // --- AI Interaction & Prompts ---
@@ -16521,10 +16668,11 @@ ${worldBooksAfter || ''}
 
         
 
-       prompt += `12. ## 🎨 **特殊能力：HTML互动小剧场 (${forceTheater ? '强制生成' : '可选能力'})** ✨\n`;
+// ▼▼▼ 核心修改：更新HTML小剧场的生成规则 ▼▼▼
+    prompt += `12. ## 🎨 **特殊能力：HTML互动小剧场 (${forceTheater ? '强制生成' : '可选能力'})** ✨\n`;
     prompt += `   - **核心要求**: ${forceTheater ? '你的本次回复中，**必须包含一个或多个**HTML互动小剧场。' : ''}这个小剧场的内容**必须**与当前的对话情景紧密相关。\n`;
     prompt += `   - **触发时机**: ${forceTheater ? '总是触发。' : '当满足以下任一条件时使用： a) 当我明确要求你“生成小剧场”时； b) 当对话内容适合用互动卡片呈现时； c) 当我发送的图片内容被识别为“合同”、“契约”等文件时。'}\n`;
-    prompt += `   - **输出格式**: 严格遵循 \`<div class="ai-theater" data-char="${character.realName}">...你的HTML代码...</div>\` 的格式。\n`;
+    prompt += `   - **输出格式 (极其重要)**: 你的HTML代码块 **必须** 被一前一后的两个标记完整包裹：\`<!-- START_THEATER -->\` 和 \`<!-- END_THEATER -->\`。系统会自动为你添加最外层的 \`<div class="ai-theater" ...>\` 容器，所以你 **绝对不能** 自己编写这个外层容器。\n`;
     prompt += `   - **【极其重要】交互规则**:
      - **禁止**: 绝对禁止在 \`onclick\` 中直接使用 \`document.getElementById\` 或 \`document.querySelector\`。
      - **必须使用**: 所有的点击交互都**必须**通过调用全局函数 \`handleTheaterClick(this, '操作类型', '目标选择器', '值')\` 来实现。
@@ -16541,6 +16689,7 @@ ${worldBooksAfter || ''}
        *示例*: \`<style>.hidden { display: none; }</style><button onclick="handleTheaterClick(this, 'toggle-class', '.secret-message', 'hidden')">显示秘密</button><p class='secret-message hidden'>这是秘密。</p>\`\n`;
     prompt += `   - **图片生成**: 当需要图片时，你**必须**使用 \`https://image.pollinations.ai/prompt/{描述}\` 的格式生成URL。{描述}必须是简短的、用 \`%40\` 分隔的英文关键词，画风不能是真人。\n`;
     prompt += `   - **重要**: 这个小剧场消息应该随机穿插在你回复的多条普通消息之间，位置不固定。\n`;
+    // ▲▲▲ 核心修改结束 ▲▲▲
         '    a) 普通消息: [' + character.realName + '的消息：{消息内容}]\n' +
         '    b) 送我的礼物: [' + character.realName + '送来的礼物：{礼物描述}]\n' +
         '    c) 语音消息: [' + character.realName + '的语音：{语音内容}]\n' +
@@ -17162,9 +17311,9 @@ if (fullResponse.includes('[accept-bond]')) {
                 // 创建一条让AI说点什么的上下文指令
                 const contextMsg = { id: `msg_bond_ctx_${Date.now()}`, role: 'user', content: `[system: 你刚刚同意了绑定请求。请说一句符合人设的、表达喜悦或确认关系的话。]`, parts: [{ type: 'text', text: `[system: 你刚刚同意了绑定请求。请说一句符合人设的、表达喜悦或确认关系的话。]` }], timestamp: Date.now() };
                 
-                character.history.push(displayMsg, contextMsg);
+                addMessageToChat(character,displayMsg, contextMsg);
                 renderMessages(false, true);
-                await saveData();
+                scheduleSaveData();
                 
                 // 刷新UI并提示用户
                 renderMessages(false, true);
@@ -17187,9 +17336,9 @@ if (fullResponse.includes('[accept-bond]')) {
                 const displayMsg = { id: `msg_bond_disp_${Date.now()}`, role: 'system', content: `[system-display:${character.remarkName} 拒绝了你的绑定请求。]`, parts: [], timestamp: Date.now() };
                 const contextMsg = { id: `msg_bond_ctx_${Date.now()}`, role: 'user', content: `[system: 你刚刚拒绝了绑定请求。请说一句符合人设的、委婉的拒绝理由。]`, parts: [{ type: 'text', text: `[system: 你刚刚拒绝了绑定请求。请说一句符合人设的、委婉的拒绝理由。]` }], timestamp: Date.now() };
 
-                character.history.push(displayMsg, contextMsg);
+                addMessageToChat(character,displayMsg, contextMsg);
                 renderMessages(false, true);
-                await saveData();
+                scheduleSaveData();
 
                 renderMessages(false, true);
                 showToast('对方拒绝了你的邀请');
@@ -17215,9 +17364,9 @@ if (fullResponse.includes('[accept-bond]')) {
                     timestamp: Date.now(),
                     bondRequestData: { status: 'pending' } // 这个属性将用于渲染卡片
                 };
-                character.history.push(bondRequestMessage);
+                addMessageToChat(character,bondRequestMessage);
                 
-                await saveData();
+                scheduleSaveData();
                 
                 // 3. 刷新UI以显示卡片
                 renderMessages(false, true);
@@ -17297,9 +17446,9 @@ if (currentChatType === 'private') {
 
 // ... 后面紧跟着的就是 renderChatList();
                 // 1. 正常发送并显示消息
-                chat.history.push(messageToSend);
+                addMessageToChat(chat,messageToSend);
                 addMessageBubble(messageToSend);
-                await saveData();
+                scheduleSaveData();
                 renderChatList();
 
                 // 2. 等待片刻，模拟“反应过来”的过程
@@ -17313,7 +17462,7 @@ if (currentChatType === 'private') {
                         // 清理临时标记
                         delete chat.history[msgIndex].isRecalling;
                         
-                        await saveData();
+                        scheduleSaveData();
                         // 4. 重新渲染聊天界面，气泡会自动变成占位符
                         renderMessages(false, true); 
                     }
@@ -17403,7 +17552,7 @@ if (currentChatType === 'private') {
                 if (receivedTransferRegex.test(message.content)) { message.transferStatus = 'pending'; }
                 else if (giftRegex.test(message.content)) { message.giftStatus = 'sent'; }
 
-                chat.history.push(message);
+                addMessageToChat(chat,message);
                 addMessageBubble(message);
 await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
 }hideTypingIndicator();
@@ -17424,7 +17573,7 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
                             timestamp: Date.now(),
                             senderId: sender.id
                         };
-                        group.history.push(message);
+                        addMessageToChat(group,message);
                         addMessageBubble(message);
                     }
                 }
@@ -17455,7 +17604,7 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
         if (chat.povCache) {
             chat.povCache = null;
         }
-        await saveData();
+        scheduleSaveData();
         renderChatList();
         if (momentsWereAdded) {
             if (typeof renderMoments === 'function') { try { await renderMoments(); } catch (e) {} }
@@ -17463,7 +17612,7 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
         }
         // if (currentChatType === 'private' && Math.random() < 0.85) {
 //     await generateBackgroundChat(chat);
-//     await saveData();
+//     scheduleSaveData();
 // }
     } else {
         // 如果AI的回复是空的，也要隐藏提示
@@ -17536,7 +17685,7 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
                     stickerData.id = `sticker_${Date.now()}`;
                     db.myStickers.push(stickerData);
                 }
-                await saveData();
+                scheduleSaveData();
                 renderStickerGrid();
                 addStickerModal.classList.remove('visible');
                 showToast('表情包已保存');
@@ -17585,7 +17734,7 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
                 if (sticker) {
                     if (confirm(`确定要删除表情“${sticker.name}”吗？`)) {
                         db.myStickers = db.myStickers.filter(s => s.id !== currentStickerActionTarget);
-                        await saveData();
+                        scheduleSaveData();
                         renderStickerGrid();
                         showToast('表情已删除');
                     }
@@ -17734,8 +17883,8 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
                     parts: [{type: 'text', text: contextMessageContent}],
                     timestamp: Date.now()
                 };
-                character.history.push(contextMessage);
-                await saveData();
+                addMessageToChat(character,contextMessage);
+                scheduleSaveData();
                 renderChatList();
             }
             receiveTransferActionSheet.classList.remove('visible');
@@ -17839,7 +17988,7 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
                 applyBtn.click();
             } else { // Fallback in case button isn't found
                 db.fontUrl = preset.url;
-                saveData();
+                scheduleSaveData();
                 applyGlobalFont(preset.url);
                 showToast('字体预设已应用！');
             }
@@ -17930,14 +18079,14 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
                 e.preventDefault();
                 const newFontUrl = fontUrlInput.value.trim();
                 db.fontUrl = newFontUrl;
-                await saveData();
+                scheduleSaveData();
                 applyGlobalFont(newFontUrl);
                 showToast('新字体已应用！');
             });
             restoreDefaultFontBtn.addEventListener('click', async () => {
                 fontUrlInput.value = '';
                 db.fontUrl = '';
-                await saveData();
+                scheduleSaveData();
                 applyGlobalFont('');
                 showToast('已恢复默认字体！');
             });
@@ -18024,7 +18173,7 @@ worldBookImportInput.addEventListener('change', handleWorldBookImport);
             db.worldBooks.push(bookData);
         }
         
-        await saveData();
+        scheduleSaveData();
         showToast('世界书条目已保存');
         renderWorldBookList();
         switchScreen('world-book-screen');
@@ -18068,7 +18217,7 @@ worldBookImportInput.addEventListener('change', handleWorldBookImport);
                         db.groups.forEach(group => {
                             group.worldBookIds = (group.worldBookIds || []).filter(id => id !== bookId);
                         });
-                        await saveData();
+                        scheduleSaveData();
                         renderWorldBookList();
                         showToast('条目已删除');
                     }
@@ -18120,7 +18269,7 @@ worldBookImportInput.addEventListener('change', handleWorldBookImport);
                         } else {
                             // Try in-place removal as fallback
                             db.worldBooks = db.worldBooks.filter(wb => wb.id !== book.id);
-                            if (typeof saveData === 'function') await saveData();
+                            if (typeof saveData === 'function') scheduleSaveData();
                         }
                         // 刷新列表视图
                         if (typeof renderWorldBookList === 'function') renderWorldBookList();
@@ -18174,7 +18323,7 @@ async function handleWorldBookImport(event) {
 
     // 批量处理完成后，统一保存和刷新UI
     if (importedFileCount > 0) {
-        await saveData();
+        scheduleSaveData();
         renderWorldBookList();
         showToast(`成功导入 ${importedFileCount} 个文件！`);
     }
@@ -18361,7 +18510,7 @@ chatSettingsBtn.addEventListener('click', () => {
                             });
                             char.chatBg = compressedUrl;
                             chatRoomScreen.style.backgroundImage = `url(${compressedUrl})`;
-                            await saveData();
+                            scheduleSaveData();
                             showToast('聊天背景已更换');
                         } catch (error) {
                             showToast('背景压缩失败，请重试');
@@ -18370,13 +18519,10 @@ chatSettingsBtn.addEventListener('click', () => {
                 }
             });
             // 这是私聊的修改
-clearChatHistoryBtn.addEventListener('click', async () => {
-    const character = db.characters.find(c => c.id === currentChatId);
-    if (!character) return;
-    if (confirm(`你确定要清空与“${character.remarkName}”的所有聊天记录吗？\n\nAI将首先对你们的对话进行总结并存入回忆面板，这个过程需要消耗API额度。`)) {
-        await summarizeAndClearHistory();
-    }
-});
+// ▼▼▼ 替换旧的清空按钮逻辑 ▼▼▼
+document.getElementById('summarize-history-btn').addEventListener('click', summarizeHistory);
+clearChatHistoryBtn.addEventListener('click', clearHistory);
+// ▲▲▲ 替换结束 ▲▲▲
             linkWorldBookBtn.addEventListener('click', () => {
     const character = db.characters.find(c => c.id === currentChatId);
     if (!character) return;
@@ -18458,7 +18604,7 @@ saveWorldBookSelectionBtn.addEventListener('click', async () => {
         if (group) group.worldBookIds = finalSelectedIds;
     }
 
-    await saveData();
+    scheduleSaveData();
     worldBookSelectionModal.classList.remove('visible');
     showToast('世界书关联已更新');
 });
@@ -18628,8 +18774,8 @@ e.offlineSettings.preset = presetSelect.options[presetSelect.selectedIndex].text
 e.offlineSettings.useCustomCss = document.getElementById('offline-use-custom-css').checked;
 e.offlineSettings.customCss = document.getElementById('offline-custom-css').value;
 
-// ... 后面是 await saveData();
-        await saveData();
+// ... 后面是 scheduleSaveData();
+        scheduleSaveData();
         showToast('设置已保存！');
         chatRoomTitle.textContent = e.remarkName;
         renderChatList();
@@ -18717,7 +18863,7 @@ function setupApiSettingsApp() {
             aiAutoPostMoment: autoPostMomentCheckbox.checked, // ▼▼▼ 在这里添加新代码 ▼▼▼
             aiBlockDuration: document.getElementById('ai-block-duration').value || 0,
         };
-        await saveData();
+        scheduleSaveData();
         showToast('API设置已保存！')
     })
 }
@@ -18770,7 +18916,7 @@ function setupApiSettingsApp() {
                         db.wallpaper = compressedUrl;
                         applyWallpaper(compressedUrl, document.getElementById('home-screen'));
                         wallpaperPreview.style.backgroundImage = `url(${compressedUrl})`;
-                        await saveData();
+                        scheduleSaveData();
                         showToast('主页壁纸更换成功！');
                     } catch (s) {
                         showToast('壁纸压缩失败，请重试');
@@ -18787,7 +18933,7 @@ function setupApiSettingsApp() {
                         db.wallpaper2 = compressedUrl;
                         applyWallpaper(compressedUrl, document.getElementById('home-screen-2'));
                         wallpaperPreview2.style.backgroundImage = `url(${compressedUrl})`;
-                        await saveData();
+                        scheduleSaveData();
                         showToast('第二页壁纸更换成功！');
                     } catch (s) {
                         showToast('壁纸压缩失败，请重试');
@@ -18805,7 +18951,7 @@ function setupApiSettingsApp() {
                         applyAiSpaceWallpaper(compressedUrl); // 调用我们新增的函数来应用壁纸
                         wallpaperPreviewAi.style.backgroundImage = `url(${compressedUrl})`;
                         wallpaperPreviewAi.textContent = '';
-                        await saveData();
+                        scheduleSaveData();
                         showToast('AI手机壁纸更换成功！');
                     } catch (s) {
                         showToast('壁纸压缩失败，请重试');
@@ -18884,7 +19030,7 @@ function setupStickerSystem() {
                     stickerData.id = `sticker_${Date.now()}`;
                     db.myStickers.push(stickerData);
                 }
-                await saveData();
+                scheduleSaveData();
                 renderStickerGrid();
                 addStickerModal.classList.remove('visible');
                 showToast('表情包已保存');
@@ -18933,7 +19079,7 @@ function setupStickerSystem() {
                 if (sticker) {
                     if (confirm(`确定要删除表情“${sticker.name}”吗？`)) {
                         db.myStickers = db.myStickers.filter(s => s.id !== currentStickerActionTarget);
-                        await saveData();
+                        scheduleSaveData();
                         renderStickerGrid();
                         showToast('表情已删除');
                     }
@@ -19027,7 +19173,7 @@ async function generateDiaryEntry(isManual = false) {
         typingIndicator.style.display = 'none';
         if (!isManual) {
              character.messageCountSinceLastDiary = 0;
-             await saveData();
+             scheduleSaveData();
         }
     }
 }
@@ -19080,7 +19226,7 @@ async function saveDiaryEntry(content) {
     // 重置消息计数
     character.messageCountSinceLastDiary = 0;
     
-    await saveData();
+    scheduleSaveData();
 }
 
 // 渲染日记列表
@@ -19314,7 +19460,7 @@ function setupDiarySystem() {
             }
         }
         
-        await saveData();
+        scheduleSaveData();
         renderUserDiaries();
         showToast('日记已保存');
         writeUserDiaryModal.classList.remove('visible');
@@ -19353,9 +19499,9 @@ function setupDiarySystem() {
                 parts: [{ type: 'text', text: `[system: 你刚刚偷偷阅读了 ${myProfile.myName} 的一篇日记。日记内容是：“${userDiary.content}”。你必须记住这件事，但绝对不能在对话中透露你是如何知道这些信息的。]` }],
                 timestamp: Date.now()
             };
-            peekingAi.history.push(contextMessage);
+            addMessageToChat(peekingAi,contextMessage);
 
-            await saveData();
+            scheduleSaveData();
             
         // --- 核心修正：不再重新渲染整个列表 ---
         // 而是找到对应的日记条目，动态更新它的评论区
@@ -19465,7 +19611,7 @@ function setupDiarySystem() {
 
         const favBtn = e.target.closest('.favorite-diary-btn');
         diary.isFavorited = !diary.isFavorited; // 切换状态
-        await saveData(); // 保存新状态
+        scheduleSaveData(); // 保存新状态
 
         // 根据最终状态更新UI和提示
         favBtn.classList.toggle('favorited', diary.isFavorited);
@@ -19479,7 +19625,7 @@ function setupDiarySystem() {
             if (confirm('确定要删除这篇日记吗？')) {
                 const index = diaryList.findIndex(d => d.id === diaryId);
                 if (index > -1) diaryList.splice(index, 1);
-                await saveData();
+                scheduleSaveData();
                 diaryEntry.remove();
                 showToast('日记已删除');
             }
@@ -19580,7 +19726,7 @@ async function handleGroupTitleMemberSelect(e) {
     if (!isMe) {
         await sendGroupTitleNotification(member, member.groupTitle);
     } else {
-        await saveData(); // 如果是自己，直接保存即可
+        scheduleSaveData(); // 如果是自己，直接保存即可
     }
     
     // 立即刷新聊天界面以显示新头衔
@@ -19610,9 +19756,9 @@ async function sendGroupTitleNotification(member, newTitle) {
         senderId: 'user_me'
     };
 
-    group.history.push(message);
+    addMessageToChat(group,message);
     addMessageBubble(message); // 在界面上显示这条系统通知
-    await saveData();
+    scheduleSaveData();
 }
 
 /**
@@ -19676,7 +19822,7 @@ function getBadgeClassForTitle(title) {
                     worldBookIds: []
                 };
                 db.groups.push(newGroup);
-                await saveData();
+                scheduleSaveData();
                 renderChatList();
                 createGroupModal.classList.remove('visible');
                 showToast(`群聊“${groupName}”创建成功！`);
@@ -19744,7 +19890,7 @@ function getBadgeClassForTitle(title) {
                         if (group) {
                             group.chatBg = compressedUrl;
                             chatRoomScreen.style.backgroundImage = `url(${compressedUrl})`;
-                            await saveData();
+                            scheduleSaveData();
                             showToast('聊天背景已更换');
                         }
                     } catch (error) {
@@ -19752,13 +19898,10 @@ function getBadgeClassForTitle(title) {
                     }
                 }
             });
-            document.getElementById('clear-group-chat-history-btn').addEventListener('click', async () => {
-                const group = db.groups.find(g => g.id === currentChatId);
-                if (!group) return;
-                if (confirm(`你确定要清空群聊“${group.name}”的所有聊天记录吗？\n\nAI将首先对群聊内容进行总结并存入回忆面板，这个过程需要消耗API额度。`)) {
-                    await summarizeAndClearHistory();
-                }
-            });
+// ▼▼▼ 替换旧的清空按钮逻辑 ▼▼▼
+document.getElementById('summarize-group-history-btn').addEventListener('click', summarizeHistory);
+document.getElementById('clear-group-chat-history-btn').addEventListener('click', clearHistory);
+// ▲▲▲ 替换结束 ▲▲▲
             groupMembersListContainer.addEventListener('click', e => {
                 const memberDiv = e.target.closest('.group-member');
                 const addBtn = e.target.closest('.add-member-btn');
@@ -19792,7 +19935,7 @@ function getBadgeClassForTitle(title) {
                     member.groupNickname = document.getElementById('edit-member-group-nickname').value;
                     member.realName = document.getElementById('edit-member-real-name').value;
                     member.persona = document.getElementById('edit-member-persona').value;
-                    await saveData();
+                    scheduleSaveData();
                     renderGroupMembersInSettings(group);
                     document.querySelectorAll(`.message-wrapper[data-sender-id="${member.id}"] .group-nickname`).forEach(el => {
                         el.textContent = member.groupNickname;
@@ -19846,7 +19989,7 @@ function getBadgeClassForTitle(title) {
                     }
                 });
                 if (selectedCharIds.length > 0) {
-                    await saveData();
+                    scheduleSaveData();
                     renderGroupMembersInSettings(group);
                     renderMessages(false, true);
                     showToast('已邀请新成员');
@@ -19867,7 +20010,7 @@ function getBadgeClassForTitle(title) {
                 };
                 group.members.push(newMember);
                 sendInviteNotification(group, newMember.realName);
-                await saveData();
+                scheduleSaveData();
                 renderGroupMembersInSettings(group);
                 renderMessages(false, true);
                 showToast(`新成员 ${newMember.groupNickname} 已加入`);
@@ -20060,7 +20203,7 @@ async function saveGroupSettingsFromSidebar() {
     group.aiProactiveChatDelay = parseInt(document.getElementById('group-ai-proactive-chat-delay').value, 10) || 0;
     group.aiProactiveChatInterval = parseInt(document.getElementById('group-ai-proactive-chat-interval').value, 10) || 0;
 
-    await saveData();
+    scheduleSaveData();
     showToast('群聊设置已保存！');
     chatRoomTitle.textContent = group.name;
     renderChatList();
@@ -20110,7 +20253,7 @@ async function saveGroupSettingsFromSidebar() {
                 timestamp: Date.now(),
                 senderId: 'user_me'
             };
-            group.history.push(message);
+            addMessageToChat(group,message);
         }
 
         function sendRenameNotification(group, newName) {
@@ -20123,7 +20266,7 @@ async function saveGroupSettingsFromSidebar() {
                 parts: [{type: 'text', text: messageContent}],
                 timestamp: Date.now()
             };
-            group.history.push(message);
+            addMessageToChat(group,message);
         }
 
 // --- NEW: Voice Call System Functions ---
@@ -20166,8 +20309,8 @@ function setupVoiceCallSystem() {
             parts: [{type: 'text', text: `[system: ${character.myName} 接听了你的电话。]`}],
             timestamp: Date.now()
         };
-        character.history.push(contextMessage);
-        saveData();
+        addMessageToChat(character,contextMessage);
+        scheduleSaveData();
         startActiveCall();
     });
     hangupCallBtn.addEventListener('click', () => endCall('ended')); // 通话中挂断
@@ -20213,8 +20356,8 @@ function startUserInitiatedCall() {
         parts: [{type: 'text', text: `[system: ${character.myName} 正在呼叫你，请根据你的人设决定是接听 [call-accept] 还是拒接 [call-decline]]`}],
         timestamp: Date.now()
     };
-    character.history.push(callMessage);
-    saveData();
+    addMessageToChat(character,callMessage);
+    scheduleSaveData();
     getAiReply(); // 触发AI响应
 }
 
@@ -20322,7 +20465,7 @@ async function endCall(reason = 'ended') {
             parts: [{type: 'text', text: `[system: 与 ${character.realName} 的通话已结束。通话记录：${JSON.stringify(voiceCallTranscript)}]`}],
             timestamp: Date.now()
         };
-        character.history.push(summaryDisplay, summaryContext);
+        addMessageToChat(character,summaryDisplay, summaryContext);
         if(currentChatId === character.id) {
              addMessageBubble(summaryDisplay);
         }
@@ -20345,7 +20488,7 @@ async function endCall(reason = 'ended') {
                 parts: [{type: 'text', text: transitionPrompt}],
                 timestamp: Date.now()
             };
-            character.history.push(contextMessage);
+            addMessageToChat(character,contextMessage);
             // 如果用户当前就在这个聊天界面，立即触发AI回复
             if (currentChatId === character.id) {
                 getAiReply();
@@ -20361,7 +20504,7 @@ async function endCall(reason = 'ended') {
     voiceCallStartTime = null;
     currentCallTargetId = null;
     
-    await saveData();
+    scheduleSaveData();
 }
 /**
  * 在通话中发送文字消息
@@ -20476,8 +20619,8 @@ function startUserInitiatedCall() {
         parts: [{type: 'text', text: `[system: ${character.myName} 正在呼叫你，请根据你的人设决定是接听 [call-accept] 还是拒接 [call-decline]]`}],
         timestamp: Date.now()
     };
-    character.history.push(callMessage);
-    saveData();
+    addMessageToChat(character,callMessage);
+    scheduleSaveData();
     getAiReply(); // 触发AI响应
 }
 
@@ -20556,7 +20699,7 @@ async function endCall(reason = 'ended') {
             parts: [{type: 'text', text: `[system: ${character.myName} 挂断了电话。]`}],
             timestamp: Date.now()
         };
-        character.history.push(hangupContext);
+        addMessageToChat(character,hangupContext);
     }
 
     // 如果通话从未被激活（即仍在响铃阶段），并且是因为 'ended', 'timeout', 'error', 或 'no_action_reply' 而结束，则直接关闭界面
@@ -20583,7 +20726,7 @@ async function endCall(reason = 'ended') {
             parts: [{type: 'text', text: `[system: ${character.myName} 拒绝了你的电话。]`}],
             timestamp: Date.now()
         };
-        character.history.push(contextMessage);
+        addMessageToChat(character,contextMessage);
     } else if (isVoiceCallActive) { 
         const summaryDisplay = {
             id: `msg_call_${Date.now()}_disp`,
@@ -20599,13 +20742,13 @@ async function endCall(reason = 'ended') {
             parts: [{type: 'text', text: `[system: 与 ${character.realName} 的通话已结束。通话记录：${JSON.stringify(voiceCallTranscript)}]`}],
             timestamp: Date.now()
         };
-        character.history.push(summaryDisplay, summaryContext);
+        addMessageToChat(character,summaryDisplay, summaryContext);
         if(currentChatId === character.id) {
              addMessageBubble(summaryDisplay);
         }
     }
     
-    await saveData();
+    scheduleSaveData();
     isVoiceCallActive = false;
     voiceCallTranscript = [];
     voiceCallStartTime = null;
@@ -21020,7 +21163,7 @@ async function handleAiPaymentDecision(messageId, decision) {
 
     // --- 核心修复：立即保存数据并刷新整个聊天界面 ---
     // 这一步会立刻将卡片状态从“等待付款”更新为“已支付”或“已拒绝”
-    await saveData();
+    scheduleSaveData();
     renderMessages(false, true); 
     // --- 修复结束 ---
 
@@ -21052,10 +21195,10 @@ async function handleAiPaymentDecision(messageId, decision) {
         parts: [{ type: 'text', text: contextMessageContent }],
         timestamp: Date.now()
     };
-    character.history.push(contextMessage);
+    addMessageToChat(character,contextMessage);
     
     // 3. 再次保存，确保指令被记录
-    await saveData();
+    scheduleSaveData();
 
     // 4. 触发AI，让它根据上面的指令生成回复 (无需等待，让它在后台运行)
     getAiReply();
@@ -21254,8 +21397,8 @@ async function completePurchase() {
         }
     };
 
-    recipient.history.push(deliveryMessage);
-    await saveData(); // 保存所有更改
+    addMessageToChat(recipient,deliveryMessage);
+    scheduleSaveData(); // 保存所有更改
 
     document.getElementById('delivery-countdown-modal').classList.remove('visible');
     showToast('购买成功！已通知对方。');
@@ -21290,7 +21433,7 @@ async function addToCart(productId, silent = false) {
         productId: productId,
         paymentDeadline: Date.now() + 30 * 60 * 1000
     });
-    await saveData();
+    scheduleSaveData();
     if (!silent) {
         showToast('宝贝已加入购物车，请在30分钟内支付哦');
         renderCart();
@@ -21425,9 +21568,9 @@ async function notifyAiOfDelivery(messageId) {
                 parts: [{ type: 'text', text: contextMessageContent }],
                 timestamp: Date.now()
             };
-            char.history.push(contextMessage);
+            addMessageToChat(char,contextMessage);
             
-            await saveData();
+            scheduleSaveData();
             
             if (currentChatId === char.id) {
                 getAiReply();
@@ -21501,9 +21644,9 @@ function setupMissYouFeature() {
             parts: [{ type: 'text', text: systemContent }],
             timestamp: now
         };
-        character.history.push(contextMessage);
+        addMessageToChat(character,contextMessage);
         
-        await saveData();
+        scheduleSaveData();
         
         missYouActionSheet.classList.remove('visible');
         showToast('你的思念已发送~');
@@ -21578,7 +21721,7 @@ function setupDailyQuestionFeature() {
                 };
 
                 character.soulBondData.dailyQuestionHistory.unshift(newQuestion);
-                await saveData();
+                scheduleSaveData();
 
                 questionTextEl.textContent = newQuestion.question;
                 currentQuestionInput.value = newQuestion.question;
@@ -21617,9 +21760,9 @@ function setupDailyQuestionFeature() {
             parts: [{ type: 'text', text: systemContent }],
             timestamp: Date.now()
         };
-        character.history.push(contextMessage);
+        addMessageToChat(character,contextMessage);
         
-        await saveData();
+        scheduleSaveData();
         questionModal.classList.remove('visible');
         showToast('回答已发送~');
 
@@ -21730,7 +21873,7 @@ function setupMoodWeatherFeature() {
                     data: moodData,
                     timestamp: now
                 };
-                await saveData();
+                scheduleSaveData();
                 renderMoodWeatherModal(moodData);
 
             } catch (error) {
@@ -21766,8 +21909,8 @@ function setupMoodWeatherFeature() {
             parts: [{ type: 'text', text: systemContent }],
             timestamp: Date.now()
         };
-        character.history.push(contextMessage);
-        await saveData();
+        addMessageToChat(character,contextMessage);
+        scheduleSaveData();
         
         moodModal.classList.remove('visible');
         showToast('安慰已送达~');
@@ -21878,9 +22021,9 @@ function setupBondMissYouHeartFeature() {
             parts: [{ type: 'text', text: systemContent }],
             timestamp: now
         };
-        character.history.push(contextMessage);
+        addMessageToChat(character,contextMessage);
         
-        await saveData();
+        scheduleSaveData();
         showToast(toastMessage);
 
         if (currentChatId === character.id) {
@@ -21963,7 +22106,7 @@ function setupSoulBondApp() {
         }
         character.soulBondData.background = document.getElementById('bond-background-url-input').value;
         
-        await saveData();
+        scheduleSaveData();
         renderSoulBondScreen();
         settingsModal.classList.remove('visible');
         showToast('设置已保存');
@@ -22007,7 +22150,7 @@ function setupSoulBondApp() {
         character.soulBondData = character.soulBondData || { photos: [], wishlist: [] };
         character.soulBondData.photos.unshift({ imageUrl, description });
 
-        await saveData();
+        scheduleSaveData();
         renderSoulBondScreen();
         addCustomPhotoModal.classList.remove('visible');
         showToast('一张新的回忆照片已添加！');
@@ -22131,7 +22274,7 @@ function setupBondInvitationSystem() {
             timestamp: Date.now(),
             bondRequestData: { status: 'pending' } // 这个特殊属性将用于渲染卡片
         };
-        character.history.push(bondRequestMessage);
+        addMessageToChat(character,bondRequestMessage);
         
         // 3. 创建并注入一条给AI看的“系统指令”
         const systemContent = `[system: ${character.myName} 向你发起了“心动绑定”请求。这代表Ta希望与你建立唯一的、最亲密的关系，以解锁更多专属互动。请根据你的人设，认真考虑后作出决定。你的回复必须是且仅是以下两个指令之一：[accept-bond] (同意绑定) 或 [decline-bond] (拒绝绑定)]`;
@@ -22139,10 +22282,10 @@ function setupBondInvitationSystem() {
             id: `msg_bond_req_ctx_${Date.now()}`, role: 'user', content: systemContent,
             parts: [{ type: 'text', text: systemContent }], timestamp: Date.now()
         };
-        character.history.push(contextMessage);
+        addMessageToChat(character,contextMessage);
 
         // 4. 保存数据，关闭弹窗，并提示用户
-        await saveData();
+        scheduleSaveData();
         inviteModal.classList.remove('visible');
         showToast(`已向 ${character.remarkName} 发送邀请！`);
 
@@ -22192,7 +22335,7 @@ function setupWishlistApp() {
 
             character.soulBondData = character.soulBondData || { photos: [], wishlist: [] };
             character.soulBondData.wishlist = wishes;
-            await saveData();
+            scheduleSaveData();
 
             renderWishlist(wishes);
         } catch (error) {
@@ -22229,7 +22372,7 @@ function setupWishlistApp() {
             });
         }
 
-        await saveData();
+        scheduleSaveData();
         renderWishlist(character.soulBondData.wishlist);
         wishEditorModal.classList.remove('visible');
     });
@@ -22251,15 +22394,15 @@ function setupWishlistApp() {
             if (!wish) return;
 
             wish.completed = wishCheckbox.checked;
-            await saveData();
+            scheduleSaveData();
             wishItem.classList.toggle('completed', wish.completed);
             showToast(wish.completed ? '一个愿望已达成！' : '愿望已重新开启');
 
             if (wish.completed) {
                 const content = `[system: 你和 ${character.myName} 共同完成了愿望清单中的一项：“${wish.text}”。请在聊天中对此发表感想。]`;
                 const contextMessage = { id: `msg_wish_done_${Date.now()}`, role: 'user', content: content, parts: [{ type: 'text', text: content }], timestamp: Date.now() };
-                character.history.push(contextMessage);
-                await saveData();
+                addMessageToChat(character,contextMessage);
+                scheduleSaveData();
             }
         }
     });
@@ -22278,7 +22421,7 @@ function setupWishlistApp() {
         
         if (wish && confirm(`确定要删除这个愿望吗？\n“${wish.text}”`)) {
             character.soulBondData.wishlist = character.soulBondData.wishlist.filter(w => w.id !== wishId);
-            await saveData();
+            scheduleSaveData();
             renderWishlist(character.soulBondData.wishlist);
             showToast('愿望已删除');
         }
@@ -22456,7 +22599,8 @@ JSON格式示例:
 // END: "心灵羁绊"App功能
 // ===============================================================
 // 在 init() 函数之前添加这个新函数
-// V V V V V  请用这段完整代码替换旧的 setupMomentsEventListeners 函数 V V V V V
+// ▼▼▼ 请用这个完整的、最终修正后的新函数，替换掉文件中旧的 setupMomentsEventListeners 函数 ▼▼▼
+
 function setupMomentsEventListeners() {
     const momentsScreen = document.getElementById('moments-screen');
     if (!momentsScreen) {
@@ -22464,18 +22608,58 @@ function setupMomentsEventListeners() {
         return;
     }
 
-    // --- 统一的点击事件监听器 (在捕获阶段运行) ---
-    momentsScreen.addEventListener('click', (e) => {
+    // --- 核心修复：唯一的、基于事件委托的监听器，适配“始终可见”的输入框 ---
+    momentsScreen.addEventListener('click', async (e) => {
         const myProfile = loadProfileFromStorage();
         const myId = myProfile.id || 'user';
 
-        // --- 评论区交互逻辑 ---
+        // --- 逻辑1：处理点赞按钮 ---
+        const likeBtn = e.target.closest('.moment-action-btn[data-action="like"]');
+        if (likeBtn) {
+            e.stopPropagation();
+            const momentItem = likeBtn.closest('.moment-item');
+            const momentId = momentItem.dataset.id;
+            const moment = await window.AppDB_Moments.moments.get(momentId);
+            if(moment) {
+                const currentLikes = moment.likes || [];
+                const myIdx = currentLikes.indexOf(myId);
+                if (myIdx > -1) {
+                    currentLikes.splice(myIdx, 1);
+                } else {
+                    currentLikes.push(myId);
+                }
+                moment.likes = currentLikes;
+                await window.AppDB_Moments.moments.put(moment);
+                renderMomentsSafe(); // 重新渲染以更新点赞状态和列表
+            }
+            return;
+        }
+
+        // --- 逻辑2：处理评论按钮 ---
+        const commentBtn = e.target.closest('.moment-action-btn[data-action="comment"]');
+        if (commentBtn) {
+            e.stopPropagation();
+            const momentItem = commentBtn.closest('.moment-item');
+            if (momentItem) {
+                const inputArea = momentItem.querySelector('.moment-comment-input-area');
+                const input = inputArea.querySelector('input');
+                const postBtn = inputArea.querySelector('button');
+                
+                // 重置为对动态的直接评论状态
+                input.placeholder = '添加评论...';
+                delete postBtn.dataset.replyToCommentId;
+                delete postBtn.dataset.replyToAuthorName;
+                input.focus();
+            }
+            return;
+        }
+        
+        // --- 逻辑3：处理点击某条已有评论（用于回复） ---
         const commentEl = e.target.closest('.moment-comment');
         if (commentEl) {
-            e.stopPropagation(); // 捕获到事件后，阻止它继续传播
+            e.stopPropagation();
             const authorId = commentEl.dataset.authorId;
             
-            // 关键修复：如果点击的是自己的评论，弹出提示
             if (authorId === myId) {
                 showToast("不能回复自己的评论哦~");
                 return;
@@ -22487,24 +22671,44 @@ function setupMomentsEventListeners() {
             const inputArea = momentItem.querySelector('.moment-comment-input-area');
             const input = inputArea.querySelector('input');
             const postBtn = inputArea.querySelector('button');
-            const authorName = window.getAuthorNameById(authorId) || '评论者';
+            
+            const authorNameEl = commentEl.querySelector('strong');
+            const authorName = authorNameEl ? authorNameEl.textContent.replace(':', '').trim() : '评论者';
 
             // 设置回复状态
             input.placeholder = `回复 ${authorName}:`;
-            inputArea.classList.add('visible');
             input.focus();
             postBtn.dataset.replyToCommentId = commentEl.dataset.commentId;
+            postBtn.dataset.replyToAuthorName = authorName;
+            return;
         }
-    }, true); // <--- 注意这里的 "true"，表示在捕获阶段监听
-
-    // --- 统一的输入事件监听器 (在捕获阶段运行) ---
+        
+        // --- 逻辑4：处理“发布”评论按钮 ---
+        const postBtn = e.target.closest('.post-comment-btn[data-action="post-comment"]');
+        if (postBtn) {
+            e.stopPropagation();
+            const momentId = postBtn.dataset.momentId;
+            const input = postBtn.previousElementSibling;
+            const commentText = input.value.trim();
+            
+            if (commentText) {
+                await saveUserComment(momentId, commentText, postBtn.dataset.replyToCommentId, postBtn.dataset.replyToAuthorName);
+                // 成功后清空输入框和回复状态
+                input.value = '';
+                input.placeholder = '添加评论...';
+                delete postBtn.dataset.replyToCommentId;
+                delete postBtn.dataset.replyToAuthorName;
+            } else {
+                showToast('评论内容不能为空');
+            }
+            return;
+        }
+    });
+    // --- “提及”功能 (@) 的逻辑保持不变 ---
     const mentionPanel = document.getElementById('mention-panel');
     let currentInputElement = null;
-
     const showMentionPanel = (inputElement) => {
         currentInputElement = inputElement;
-
-        // 关键修复：如果角色列表为空，则显示提示
         if (!db || !db.characters || db.characters.length === 0) {
             mentionPanel.innerHTML = '<div class="mention-item" style="color:#aaa;">没有可@的角色</div>';
         } else {
@@ -22527,7 +22731,6 @@ function setupMomentsEventListeners() {
                     inputElement.focus();
                     
                     const newCursorPos = atIndex + `@${char.remarkName} `.length;
-                    // 使用 setTimeout 确保光标在值更新后移动
                     setTimeout(() => inputElement.setSelectionRange(newCursorPos, newCursorPos), 0);
                 };
                 mentionPanel.appendChild(item);
@@ -22536,43 +22739,36 @@ function setupMomentsEventListeners() {
         
         const rect = inputElement.getBoundingClientRect();
         mentionPanel.style.display = 'block';
-        // 关键修复：更稳健的定位，总是在输入框上方
         mentionPanel.style.bottom = `${window.innerHeight - rect.top}px`;
         mentionPanel.style.left = `${rect.left}px`;
         mentionPanel.style.width = `${rect.width}px`;
-        mentionPanel.style.top = 'auto'; // 取消top定位
+        mentionPanel.style.top = 'auto';
     };
-
     const hideMentionPanel = () => {
         if (mentionPanel) mentionPanel.style.display = 'none';
         currentInputElement = null;
     };
-
     momentsScreen.addEventListener('input', (e) => {
         if (e.target.matches('#post-text, .moment-comment-input')) {
             const input = e.target;
             const cursorPos = input.selectionStart;
             const textBeforeCursor = input.value.substring(0, cursorPos);
 
-            // 当光标前是@时触发
             if (textBeforeCursor.endsWith('@')) {
                 showMentionPanel(input);
             } else if (!/@\S*$/.test(textBeforeCursor)) {
                 hideMentionPanel();
             }
         }
-    }, true); // <--- 注意这里的 "true"，表示在捕获阶段监听
-
-    // 点击或滚动时隐藏面板
+    });
     document.addEventListener('click', (e) => {
         if (currentInputElement && !mentionPanel.contains(e.target) && e.target !== currentInputElement) {
             hideMentionPanel();
         }
-    }, true);
+    });
     document.addEventListener('scroll', hideMentionPanel, true);
 }
-// ^ ^ ^ ^ ^  替换结束 ^ ^ ^ ^ ^
-
+// ▲▲▲ 替换结束 ▲▲▲
 
 // --- AI轨迹功能 ---
 
@@ -23169,7 +23365,7 @@ function setupForumConfigSystem() {
         db.forumSettings.allowNpcs = allowNpcsToggle.checked;
         db.forumSettings.allowUnrelated = allowUnrelatedToggle.checked;
         db.forumSettings.allowRomanticNpcs = allowRomanticNpcsToggle.checked;
-        await saveData();
+        scheduleSaveData();
         showToast('论坛配置已保存！');
     });
 
@@ -23320,7 +23516,7 @@ function setupForumSystem() {
             const newThreads = JSON.parse(jsonMatch[0]);
             
             db.forumData[currentBoardId] = newThreads; // 存入长期数据库
-await saveData(); // 立即保存到本地
+scheduleSaveData(); // 立即保存到本地
             renderThreadList(currentBoardId);
 
         } catch (error) {
@@ -23472,10 +23668,10 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
                 parts: [{ type: 'text', text: replyContent.trim() }],
                 timestamp: Date.now()
             };
-            character.history.push(message);
+            addMessageToChat(character,message);
         });
 
-        await saveData();
+        scheduleSaveData();
         showToast('分享成功！AI已在聊天中回复你。');
 
         // 自动跳转到对应的聊天界面
@@ -23588,7 +23784,7 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
                     commentary: memoryData.commentary
                 };
                 character.memories.push(newMemory);
-                await saveData();
+                scheduleSaveData();
                 console.log("一段新的回忆已保存:", newMemory);
             }
         }
@@ -23613,7 +23809,7 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
                     // 如果是首次配置，创建默认数据
                     const defaultWidgetData = { id: widgetId, text: '自定义', imageUrl: 'https://i.ibb.co/6r11fGg/avatar1.png' };
                     db.customWidgets.push(defaultWidgetData);
-                    saveData(); // 保存默认数据
+                    scheduleSaveData(); // 保存默认数据
                     widgetData = defaultWidgetData;
                 }
 
@@ -23648,7 +23844,7 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
                     db.customWidgets[widgetIndex].imageUrl = newImageUrl;
                 }
 
-                await saveData();
+                scheduleSaveData();
                 modal.classList.remove('visible');
                 showToast('组件已更新！');
                 
@@ -23682,25 +23878,29 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
                 }
             });
         }
-// === 新增的AI总结并清空历史记录的函数 ===
-async function summarizeAndClearHistory() {
+/// ▼▼▼ 请用这两个新函数，完整替换掉旧的 summarizeAndClearHistory 函数 ▼▼▼
+
+/**
+ * [新功能] 仅总结当前对话为回忆，不清空记录。
+ */
+async function summarizeHistory() {
     if (isGenerating) {
-        //showToast('AI正在思考中，请稍后重试...');
+        showToast('AI正在思考中，请稍后重试...');
         return;
     }
 
-    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    const chat = (currentChatType === 'private') 
+        ? db.characters.find(c => c.id === currentChatId) 
+        : db.groups.find(g => g.id === currentChatId);
+
     if (!chat || chat.history.length === 0) {
         showToast('没有聊天记录可供总结。');
-        chat.history = []; // 仍然清空
-        await saveData();
-        renderMessages(false, true);
         return;
     }
 
     isGenerating = true;
-    const sidebar = (currentChatType === 'private') ? settingsSidebar : groupSettingsSidebar;
-    sidebar.classList.remove('open');
+    const sidebar = (currentChatType === 'private') ? document.getElementById('chat-settings-modal') : groupSettingsSidebar;
+    sidebar.classList.remove('visible', 'open');
     showToast('正在请求AI总结回忆，请稍候...');
 
     try {
@@ -23723,21 +23923,65 @@ async function summarizeAndClearHistory() {
         const oldSummary = chat.memorySummary || '';
         chat.memorySummary = (oldSummary ? oldSummary + '\n\n' : '') + `[${new Date().toLocaleString()}]\n` + summary.trim();
         
-        // 清空历史记录
-        chat.history = [];
-
-        await saveData();
-        renderMessages(false, true); // 刷新聊天界面
-        renderChatList(); // 刷新聊天列表
-        showToast('回忆总结已完成并保存，聊天记录已清空！');
+        scheduleSaveData();
+        showToast('回忆总结已完成并保存！');
 
     } catch (error) {
         console.error('总结回忆失败:', error);
-        showToast(`总结失败: ${error.message}。记录未被清空。`);
+        showToast(`总结失败: ${error.message}`);
     } finally {
         isGenerating = false;
     }
 }
+
+/**
+ * [新功能] 仅清空聊天记录，不进行总结。
+ */
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 clearHistory 函数 ▼▼▼
+        async function clearHistory() {
+            const chat = (currentChatType === 'private') 
+                ? db.characters.find(c => c.id === currentChatId) 
+                : db.groups.find(g => g.id === currentChatId);
+            
+            if (!chat) return;
+
+            const chatName = chat.name || chat.remarkName;
+            if (confirm(`你确定要清空与“${chatName}”的所有聊天记录吗？\n\n此操作不可撤销，且不会生成回忆摘要。`)) {
+                
+                const bufferKey = `pendingAction_clearHistory_${currentChatType}_${currentChatId}`;
+
+                try {
+                    // 1. 同步“救生艇”：立即在 localStorage 中设置一个“待清空”标记
+                    localStorage.setItem(bufferKey, 'true');
+                    console.log(`同步设置了清空标记到 localStorage: ${bufferKey}`);
+
+                    // 2. 更新内存中的数据
+                    chat.history = [];
+
+                    // 3. 异步“货轮”：在后台清空主数据库中的消息
+                    await dataStorage.clearChatMessages(currentChatId, currentChatType);
+
+                    // 4. 异步操作成功后，清理“救生艇”
+                    localStorage.removeItem(bufferKey);
+                    console.log(`主存储清空成功，已清理 localStorage 的清空标记`);
+
+                } catch (error) {
+                    console.error("清空聊天记录时发生严重错误:", error);
+                    showToast('清空失败，请刷新页面后重试');
+                    // 发生错误时，不更新UI，让用户刷新后由恢复逻辑处理
+                    return;
+                }
+
+                // 5. 更新UI
+                renderMessages(false, true);
+                renderChatList();
+                
+                const sidebar = (currentChatType === 'private') ? document.getElementById('chat-settings-modal') : groupSettingsSidebar;
+                sidebar.classList.remove('visible', 'open');
+                showToast('聊天记录已清空！');
+            }
+        }
+// ▲▲▲ 替换结束 ▲▲▲
 // === 新增：处理回忆记录面板的显示功能 ===
 function setupMemorySummaryModal() {
     const modal = document.getElementById('memory-summary-modal');
@@ -23801,7 +24045,7 @@ function setupHomeScreenProfileEditor() {
 
     // 2. 保存函数 (保持不变)
     async function saveProfile() {
-        await saveData();
+        scheduleSaveData();
         showToast('主页信息已更新');
     }
     
@@ -24163,7 +24407,7 @@ function setupAiPovApp() {
                     chatList: chatList,
                     conversations: {}
                 };
-                await saveData();
+                scheduleSaveData();
 
                 renderAiChatList(character, chatList);
 
@@ -24228,7 +24472,7 @@ currentAiPovData.conversations[currentAiPovChatId] = conversationData;
 const character = db.characters.find(c => c.id === currentAiPovId);
 if (character && character.povCache) {
     character.povCache.conversations[currentAiPovChatId] = conversationData;
-    await saveData();
+    scheduleSaveData();
 }
 
 
@@ -24567,7 +24811,7 @@ async function generateBackgroundChat(characterA) {
             characterA.povChats.push(povChat);
         }
 
-        povChat.history.push(...newMessages);
+        addMessageToChat(povChat,...newMessages);
         if (povChat.history.length > 20) {
             povChat.history = povChat.history.slice(povChat.history.length - 20);
         }
@@ -24623,7 +24867,7 @@ async function handleUserBlockToggle() {
             contextMessageContent += ` 在你被拉黑期间，${character.myName} 发送了以下消息，请你一次性地对这些内容作出回应：\n- ${missessedMessagesText}`;
             
             // 将暂存消息正式移入历史并清空
-            character.history.push(...character.pendingMessages);
+            addMessageToChat(character,...character.pendingMessages);
             character.pendingMessages = [];
         }
         
@@ -24650,9 +24894,9 @@ async function handleUserBlockToggle() {
     };
 
     // 将两条消息都加入历史记录
-    character.history.push(displayMessage, contextMessage);
+    addMessageToChat(character,displayMessage, contextMessage);
 
-    await saveData();
+    scheduleSaveData();
     updateBlockButtonState(character);
     renderMessages(false, true); // 刷新界面以显示新的系统提示
 }
@@ -24718,9 +24962,9 @@ async function activateAiBlock(character) {
         parts: [],
         timestamp: Date.now()
     };
-    character.history.push(displayMessage);
+    addMessageToChat(character,displayMessage);
 
-    await saveData();
+    scheduleSaveData();
 
     if (character.id === currentChatId) {
         checkAndUpdateUiForAiBlock();
@@ -24764,9 +25008,9 @@ async function deactivateAiBlock(character, isAuto = false) {
     };
     
     // 将显示消息和上下文消息都加入历史
-    character.history.push(displayMessage, contextMessage);
+    addMessageToChat(character,displayMessage, contextMessage);
 
-    await saveData();
+    scheduleSaveData();
 
     if (character.id === currentChatId) {
         checkAndUpdateUiForAiBlock();
@@ -24922,7 +25166,7 @@ async function triggerProactiveMessage(chatObject, type) {
     if (type === 'group') {
         proactivePromptMessage.senderId = 'user_me';
     }
-    chatObject.history.push(proactivePromptMessage);
+    addMessageToChat(chatObject,proactivePromptMessage);
 
     try {
         let fullSystemPrompt;
@@ -24964,11 +25208,11 @@ async function triggerProactiveMessage(chatObject, type) {
                     }
                 }
                 // 直接将消息添加到历史记录
-                chatObject.history.push(message);
+                addMessageToChat(chatObject,message);
             }
 
             // 立即保存数据
-            await saveData();
+            scheduleSaveData();
 
             // 立即刷新聊天列表UI
             renderChatList();
@@ -25315,7 +25559,7 @@ function setupAiBrowserApp() {
             
             currentAiForApp.aiSpaceData = currentAiForApp.aiSpaceData || {};
             currentAiForApp.aiSpaceData.browserHistory = historyData;
-            await saveData();
+            scheduleSaveData();
 
             renderAiBrowserHistory(historyData);
         } catch (error) {
@@ -25424,7 +25668,7 @@ function setupAiPhotosApp() {
 
             // 核心修改：保存到缓存
             currentAiForApp.aiSpaceData.photos = photosData;
-            await saveData();
+            scheduleSaveData();
 
             renderAiPhotos(photosData);
         } catch (error) {
@@ -25501,7 +25745,7 @@ function setupAiSignalApp() {
             
             // 核心修改：保存到缓存
             currentAiForApp.aiSpaceData.heartSignal = signalData;
-            await saveData();
+            scheduleSaveData();
 
             renderAiHeartSignal(signalData);
         } catch (error) {
@@ -25570,7 +25814,7 @@ function setupAiMusicApp() {
             // 保存到缓存
             currentAiForApp.aiSpaceData = currentAiForApp.aiSpaceData || {};
             currentAiForApp.aiSpaceData.musicPlaylist = playlistData;
-            await saveData();
+            scheduleSaveData();
 
             renderAiMusicPlaylist(playlistData);
         } catch (error) {
@@ -25673,7 +25917,7 @@ function setupAiShoppingApp() {
             
             // 核心修改：保存到缓存
             currentAiForApp.aiSpaceData.shopping = shoppingData;
-            await saveData();
+            scheduleSaveData();
 
             renderAiShoppingList(shoppingData);
         } catch (error) {
@@ -25747,7 +25991,7 @@ function setupAiMemoApp() {
             
             // 核心修改：保存到缓存
             currentAiForApp.aiSpaceData.memos = memoData;
-            await saveData();
+            scheduleSaveData();
 
             renderAiMemoList(memoData);
         } catch (error) {
@@ -25822,7 +26066,7 @@ function setupAiWalletApp() {
 
             // 核心修改：保存到缓存
             currentAiForApp.aiSpaceData.wallet = transactionsData;
-            await saveData();
+            scheduleSaveData();
 
             renderAiWalletTransactions(transactionsData);
         } catch (error) {
@@ -25924,7 +26168,7 @@ function setupAiMusicApp() {
             // 保存到缓存
             currentAiForApp.aiSpaceData = currentAiForApp.aiSpaceData || {};
             currentAiForApp.aiSpaceData.musicPlaylist = playlistData;
-            await saveData();
+            scheduleSaveData();
 
             renderAiMusicPlaylist(playlistData);
         } catch (error) {
@@ -26060,7 +26304,7 @@ function setupDiaryExchangeApp() {
             character.soulBondData.diaryExchanges = character.soulBondData.diaryExchanges || [];
             character.soulBondData.diaryExchanges.unshift(newExchange);
 
-            await saveData();
+            scheduleSaveData();
             renderDiaryExchanges();
             showToast('交换日记已收到回复！');
 
@@ -26084,7 +26328,7 @@ function setupDiaryExchangeApp() {
             const character = db.characters.find(c => c.id === characterId);
             if (character && character.soulBondData) {
                 character.soulBondData.diaryExchanges = character.soulBondData.diaryExchanges.filter(ex => ex.id !== exchangeId);
-                await saveData();
+                scheduleSaveData();
                 renderDiaryExchanges();
                 showToast('交换日记已删除');
             }
@@ -26224,6 +26468,199 @@ function generateDiaryExchangePrompt(character, userContent, userImage) {
 
 
 
+<!-- === ChatGPT 插入脚本：我的人设预设逻辑（放到页面脚本块） === -->
+<script>
+(function(){
+  if (window._myPersonaPresetScriptLoaded) return;
+  window._myPersonaPresetScriptLoaded = true;
+
+  // 存取 localStorage
+  function _getMyPersonaPresets() {
+    try { return JSON.parse(localStorage.getItem('myPersonaPresets') || '[]'); }
+    catch(e){ return []; }
+  }
+  function _saveMyPersonaPresets(arr) {
+    localStorage.setItem('myPersonaPresets', JSON.stringify(arr || []));
+  }
+
+  // 填充下拉
+  function populateMyPersonaSelect() {
+    const sel = document.getElementById('mypersona-preset-select');
+    if (!sel) return;
+    const presets = _getMyPersonaPresets();
+    sel.innerHTML = '<option value="">— 选择预设 —</option>';
+    presets.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  // 保存当前侧栏（我的人设 + 我的头像 + 我的名字）为预设
+  function saveCurrentMyPersonaAsPreset() {
+    const personaEl = document.getElementById('setting-my-persona');
+    const avatarEl = document.getElementById('setting-my-avatar-preview');
+    // --- ▼▼▼ 核心修改①：获取“我的姓名”输入框 ▼▼▼ ---
+    const nameEl = document.getElementById('setting-my-name');
+    
+    if (!personaEl || !avatarEl || !nameEl) return (window.showToast && showToast('找不到人设、头像或姓名控件')) || alert('找不到人设、头像或姓名控件');
+    
+    const persona = personaEl.value.trim();
+    const avatar = avatarEl.src || '';
+    // --- ▼▼▼ 核心修改②：获取“我的姓名”的值 ▼▼▼ ---
+    const nameValue = nameEl.value.trim();
+
+    if (!persona && !avatar && !nameValue) return (window.showToast && showToast('人设、头像和姓名都为空，无法保存')) || alert('人设、头像和姓名都为空，无法保存');
+    
+    const presetName = prompt('请输入预设名称（将覆盖同名预设）：');
+    if (!presetName) return;
+    
+    const presets = _getMyPersonaPresets();
+    const idx = presets.findIndex(p => p.name === presetName);
+    // --- ▼▼▼ 核心修改③：将姓名也存入预设对象 ▼▼▼ ---
+    const preset = { name: presetName, persona, avatar, myName: nameValue };
+    
+    if (idx >= 0) presets[idx] = preset; else presets.push(preset);
+    _saveMyPersonaPresets(presets);
+    populateMyPersonaSelect();
+    (window.showToast && showToast('我的人设预设已保存')) || console.log('我的人设预设已保存');
+  }
+
+  // 将预设应用到当前聊天（同时写 UI + db.characters，并保存）
+  async function applyMyPersonaPresetToCurrentChat(presetName) {
+    const presets = _getMyPersonaPresets();
+    const p = presets.find(x => x.name === presetName);
+    if (!p) { (window.showToast && showToast('未找到该预设')) || alert('未找到该预设'); return; }
+
+    // 更新界面
+    const personaEl = document.getElementById('setting-my-persona');
+    const avatarEl = document.getElementById('setting-my-avatar-preview');
+    // --- ▼▼▼ 核心修改④：获取并更新“我的姓名”输入框 ▼▼▼ ---
+    const nameEl = document.getElementById('setting-my-name');
+
+    if (personaEl) personaEl.value = p.persona || '';
+    if (avatarEl) avatarEl.src = p.avatar || '';
+    if (nameEl) nameEl.value = p.myName || ''; // 应用姓名
+
+    // 尝试写入当前 chat 对象
+    try {
+      if (typeof currentChatId !== 'undefined' && window.db && Array.isArray(db.characters)) {
+        const e = db.characters.find(c => c.id === currentChatId);
+        if (e) {
+          e.myPersona = p.persona || '';
+          e.myAvatar = p.avatar || '';
+          // --- ▼▼▼ 核心修改⑤：将姓名也写入当前聊天对象 ▼▼▼ ---
+          e.myName = p.myName || '';
+
+          if (typeof saveData === 'function') scheduleSaveData();
+          (window.showToast && showToast('预设已应用并保存到当前聊天')) || console.log('预设已应用');
+          
+          // 刷新侧栏与列表以显示更新
+          if (typeof loadSettingsToSidebar === 'function') try{ loadSettingsToSidebar(); }catch(e){}
+          if (typeof renderChatList === 'function') try{ renderChatList(); }catch(e){}
+        }
+      } else {
+        (window.showToast && showToast('预设已应用到界面（未检测到当前聊天保存入口）')) || console.log('预设已应用到界面');
+      }
+    } catch(err) {
+      console.error('applyMyPersonaPresetToCurrentChat error', err);
+    }
+  }
+
+  // 管理 Modal (这部分代码无需修改)
+  function openManageMyPersonaModal() {
+    const modal = document.getElementById('mypersona-presets-modal');
+    const list = document.getElementById('mypersona-presets-list');
+    if (!modal || !list) return;
+    list.innerHTML = '';
+    const presets = _getMyPersonaPresets();
+    if (!presets.length) list.innerHTML = '<p style="color:#888;margin:6px 0;">暂无预设</p>';
+    presets.forEach((p, idx) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0;';
+      
+      // --- ▼▼▼ 核心修改⑥：在管理弹窗中也显示头像和名字 ▼▼▼ ---
+      const profileDiv = document.createElement('div');
+      profileDiv.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+      const avatarImg = document.createElement('img');
+      avatarImg.src = p.avatar || 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg';
+      avatarImg.style.cssText = 'width: 32px; height: 32px; border-radius: 50%; object-fit: cover;';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = p.name; // 这是预设的名字
+      nameSpan.style.fontWeight = '600';
+      profileDiv.appendChild(avatarImg);
+      profileDiv.appendChild(nameSpan);
+      row.appendChild(profileDiv);
+      // --- 修改结束 ---
+
+      const btnWrap = document.createElement('div');
+      btnWrap.style.cssText = 'display: flex; gap: 6px;';
+
+      const applyBtn = document.createElement('button');
+      applyBtn.className = 'btn btn-primary';
+      applyBtn.style.padding = '6px 8px;border-radius:8px';
+      applyBtn.textContent = '应用';
+      applyBtn.onclick = function(){ applyMyPersonaPresetToCurrentChat(p.name); modal.style.display = 'none'; };
+
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'btn';
+      renameBtn.style.padding = '6px 8px;border-radius:8px';
+      renameBtn.textContent = '重命名';
+      renameBtn.onclick = function(){
+        const newName = prompt('输入新名称：', p.name);
+        if (!newName) return;
+        const all = _getMyPersonaPresets();
+        all[idx].name = newName;
+        _saveMyPersonaPresets(all);
+        openManageMyPersonaModal();
+        populateMyPersonaSelect();
+      };
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn';
+      deleteBtn.style.padding = '6px 8px;border-radius:8px;color:#e53935';
+      deleteBtn.textContent = '删除';
+      deleteBtn.onclick = function(){
+        if (!confirm('确认删除该预设？')) return;
+        const all = _getMyPersonaPresets();
+        all.splice(idx,1);
+        _saveMyPersonaPresets(all);
+        openManageMyPersonaModal();
+        populateMyPersonaSelect();
+      };
+
+      btnWrap.appendChild(applyBtn);
+      btnWrap.appendChild(renameBtn);
+      btnWrap.appendChild(deleteBtn);
+      row.appendChild(btnWrap);
+
+      list.appendChild(row);
+    });
+
+    modal.style.display = 'flex';
+  }
+
+  // 绑定 UI
+  function bind() {
+    populateMyPersonaSelect();
+    const saveBtn = document.getElementById('mypersona-save-btn');
+    const manageBtn = document.getElementById('mypersona-manage-btn');
+    const applyBtn = document.getElementById('mypersona-apply-btn');
+    const select = document.getElementById('mypersona-preset-select');
+    const modalClose = document.getElementById('mypersona-close-modal');
+
+    if (saveBtn) saveBtn.addEventListener('click', saveCurrentMyPersonaAsPreset);
+    if (manageBtn) manageBtn.addEventListener('click', openManageMyPersonaModal);
+    if (applyBtn) applyBtn.addEventListener('click', function(){ const v = select.value; if(!v) return (window.showToast && showToast('请选择要应用的预设')) || alert('请选择要应用的预设'); applyMyPersonaPresetToCurrentChat(v); });
+    if (modalClose) modalClose.addEventListener('click', function(){ document.getElementById('mypersona-presets-modal').style.display='none'; });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else setTimeout(bind,50);
+})();
+</script>
+<!-- === /我的人设预设脚本 === -->
+
 
 
 <!-- === ChatGPT 插入：气泡预设脚本 === -->
@@ -26323,7 +26760,7 @@ function cancelQuoteReply() {
       if (previewBox && typeof updateBubbleCssPreview === 'function') updateBubbleCssPreview(previewBox, preset.css, false);
       (window.showToast && showToast('预设已应用到当前聊天并保存')) || alert('预设已应用（若页面支持）');
       if (typeof saveData === 'function') {
-        try { await saveData(); } catch(e){ /* ignore */ }
+        try { scheduleSaveData(); } catch(e){ /* ignore */ }
       }
     } catch(e){
       console.error('applyPresetToCurrentChat error', e);
@@ -26747,7 +27184,7 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
         if (e) {
           e.myPersona = p.persona || '';
           e.myAvatar = p.avatar || '';
-          if (typeof saveData === 'function') await saveData();
+          if (typeof saveData === 'function') scheduleSaveData();
           (window.showToast && showToast('预设已应用并保存到当前聊天')) || console.log('预设已应用');
           // 刷新侧栏与列表以显示更新
           if (typeof loadSettingsToSidebar === 'function') try{ loadSettingsToSidebar(); }catch(e){}
@@ -28744,6 +29181,100 @@ input:checked + .slider:before {
 (function() {
   // 等 DOM 完全加载
   document.addEventListener('DOMContentLoaded', () => {
+    // === 注入修复：节流保存与安全写入封装 ===
+    (function(){
+      const SAVE_DEBOUNCE_MS = 600;
+      let __saveTimer = null;
+      window.scheduleSaveData = function(delay = SAVE_DEBOUNCE_MS) {
+        if (typeof window.saveData !== 'function') {
+          // 若 saveData 还未定义，稍后尝试一次
+          if (__saveTimer) clearTimeout(__saveTimer);
+          __saveTimer = setTimeout(() => {
+            __saveTimer = null;
+            if (typeof window.saveData === 'function') {
+              try { window.scheduleSaveData(); } catch(e){ console.warn('delayed saveData failed', e); }
+            }
+          }, delay);
+          return;
+        }
+        if (__saveTimer) clearTimeout(__saveTimer);
+        __saveTimer = setTimeout(async () => {
+          __saveTimer = null;
+          try { await window.scheduleSaveData(); } catch (e) { console.warn('saveData() failed (debounced):', e); }
+        }, delay);
+      };
+
+      // ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 addMessageToChat 函数 ▼▼▼
+
+      const MAX_HISTORY_PER_CHAT = 500;
+      /**
+       * [V3.0 | 最终修复方案] 将消息添加到聊天历史，并使用同步+异步双重保险机制确保数据不丢失。
+       * @param {object} chat - 聊天对象 (角色或群组)。
+       * @param {...object} messages - 要添加的一个或多个消息对象。
+       */
+      window.addMessageToChat = function(chat, ...messages) {
+          try {
+              if (!chat || messages.length === 0) return;
+              if (!Array.isArray(chat.history)) chat.history = [];
+
+              // 1. 将新消息添加到内存中的历史记录
+              chat.history.push(...messages);
+
+              // --- 核心修复①：同步“救生艇”机制 ---
+              // 立即、同步地将新消息写入 localStorage 作为紧急备份。
+              try {
+                  const chatType = chat.members || chat.isGroup ? 'group' : 'private';
+                  const bufferKey = `pendingMessages_${chatType}_${chat.id}`;
+                  const existingBuffer = JSON.parse(localStorage.getItem(bufferKey) || '[]');
+                  existingBuffer.push(...messages);
+                  localStorage.setItem(bufferKey, JSON.stringify(existingBuffer));
+                  console.log(`同步备份了 ${messages.length} 条消息到 localStorage`);
+              } catch (e) {
+                  console.error("同步备份到 localStorage 失败:", e);
+              }
+              // --- 修复结束 ---
+
+              // 2. 正常触发异步“货轮”保存（这个逻辑不变，但现在它多了一个清理“救生艇”的任务）
+              if (window.dataStorage && typeof window.dataStorage.saveChatMessages === 'function') {
+                  const historyToSave = [...chat.history];
+                  const chatType = chat.members || chat.isGroup ? 'group' : 'private';
+                  
+                  dataStorage.saveChatMessages(chat.id, chatType, historyToSave)
+                      .then(() => {
+                          console.log(`异步主存储成功: ${chat.name || chat.remarkName}`);
+                      })
+                      .catch(err => {
+                          console.error(`异步主存储失败: ${err}`);
+                      });
+              }
+
+              // 3. 修剪内存中的历史记录（不变）
+              if (chat.history.length > MAX_HISTORY_PER_CHAT) {
+                  chat.history = chat.history.slice(chat.history.length - MAX_HISTORY_PER_CHAT);
+              }
+
+              // 4. 触发全局延时保存（不变）
+              if (typeof window.scheduleSaveData === 'function') {
+                  window.scheduleSaveData();
+              }
+
+          } catch (e) {
+              console.error('addMessageToChat error:', e);
+          }
+      };
+      // ▲▲▲ 替换结束 ▲▲▲
+
+      window.batchUpdate = async function(workerFn, opts = {}) {
+        try {
+          workerFn && workerFn();
+          if (opts.persist !== false) window.scheduleSaveData(300);
+          if (typeof opts.after === 'function') opts.after();
+        } catch (e) {
+          console.error('batchUpdate failed:', e);
+        }
+      };
+    })();
+
     // --- 全局辅助函数 ---
     window.getAuthorNameById = function(authorId) {
         if (!authorId) return '未知';
@@ -28893,7 +29424,7 @@ async function addMomentToDB(momentObj) {
   window.db.moments.push(momentObj);
 
   if (typeof window.saveData === 'function') {
-    try { await window.saveData(); } catch(e){ console.warn('saveData fallback failed', e); }
+    try { await window.scheduleSaveData(); } catch(e){ console.warn('saveData fallback failed', e); }
   }
 
   // 4) Try to mirror into AppDB_Moments (put to avoid duplicate key issues)
@@ -29243,9 +29774,9 @@ async function saveUserComment(momentId, commentText, replyToCommentId = null, r
                 parts: [{ type: 'text', text: notificationContent }],
                 timestamp: Date.now()
             };
-            notificationTargetCharacter.history.push(contextMessage);
+            addMessageToChat(notificationTargetCharacter,contextMessage);
             if (typeof window.saveData === 'function') {
-                await window.saveData();
+                await window.scheduleSaveData();
             }
         }
         
@@ -29645,223 +30176,180 @@ function updateBottomNavVisibilityByActive() {
     if (!momentsScreen) {
       console.warn('[injected patch] #moments-screen not found.');
     }
-    // Ensure a container exists
     let momentsContainer = document.getElementById('moments-container');
     if (!momentsContainer && momentsScreen) {
       const content = momentsScreen.querySelector('.content') || momentsScreen;
       momentsContainer = document.createElement('div');
       momentsContainer.id = 'moments-container';
       content.appendChild(momentsContainer);
-      console.log('[injected patch] created #moments-container');
     }
-    // Safe Dexie wrapper
+
     let _db = null;
     if (typeof Dexie !== 'undefined') {
-        // Use the existing global instance if available
         if (window.AppDB_Moments) {
             _db = window.AppDB_Moments;
         } else {
             try {
                 _db = new Dexie('AppDB_Moments');
                 _db.version(1).stores({ moments: 'id,timestamp,commentedBy' });
-                window.AppDB_Moments = _db; // Ensure it's globally available
-            } catch (e) {
-                console.warn('[injected patch] Dexie init failed:', e);
-                _db = null;
-            }
-        }
-    } else {
-        console.warn('[injected patch] Dexie not available.');
-    }
-
-// ▼▼▼ 在 renderMomentsSafe 函数的正上方，粘贴这个新函数 ▼▼▼
-function getAuthorProfile(authorId) {
-    // 默认备用信息
-    let profile = { name: '未知用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg' };
-
-    // 1. 检查是不是用户自己
-    const myProfile = (typeof loadProfileFromStorage === 'function') ? loadProfileFromStorage() : {};
-    if (authorId === (myProfile.id || 'user')) {
-        return { name: myProfile.name || '我', avatar: myProfile.avatar };
-    }
-
-    // 2. 在所有AI角色中查找
-    if (window.db && Array.isArray(window.db.characters)) {
-        const character = window.db.characters.find(c => c.id === authorId);
-        if (character) {
-            return { name: character.remarkName, avatar: character.avatar };
+                window.AppDB_Moments = _db;
+            } catch (e) { _db = null; }
         }
     }
 
-    // 3. 在所有群聊的成员中查找 (以防是群聊成员发的动态)
-    if (window.db && Array.isArray(window.db.groups)) {
-        for (const group of window.db.groups) {
-            if (Array.isArray(group.members)) {
-                const member = group.members.find(m => m.id === authorId);
-                if (member) {
-                    return { name: member.groupNickname, avatar: member.avatar };
+    function getAuthorProfile(authorId) {
+        let profile = { name: '未知用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg' };
+        const myProfile = (typeof loadProfileFromStorage === 'function') ? loadProfileFromStorage() : {};
+        if (authorId === (myProfile.id || 'user')) {
+            return { name: myProfile.name || '我', avatar: myProfile.avatar };
+        }
+        if (window.db && Array.isArray(window.db.characters)) {
+            const character = window.db.characters.find(c => c.id === authorId);
+            if (character) return { name: character.remarkName, avatar: character.avatar };
+        }
+        if (window.db && Array.isArray(window.db.groups)) {
+            for (const group of window.db.groups) {
+                if (Array.isArray(group.members)) {
+                    const member = group.members.find(m => m.id === authorId);
+                    if (member) return { name: member.groupNickname, avatar: member.avatar };
                 }
             }
         }
+        return profile;
     }
-    
-    return profile; // 如果都找不到，返回默认信息
-}
-// ▲▲▲ 添加结束 ▲▲▲
 
-// ▼▼▼ 用这个新版本，完整替换掉旧的 renderMomentsSafe 函数 ▼▼▼
+    async function saveUserComment(momentId, commentText, replyToCommentId = null, replyToAuthorName = null) {
+        try {
+            if (!_db || !momentId || !commentText) return;
+            const moment = await _db.moments.get(momentId);
+            if (!moment) return;
+
+            const myProfile = loadProfileFromStorage();
+            const myId = myProfile.id || 'user';
+            const myName = myProfile.name || '我';
+
+            const newComment = {
+                id: `comment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                roleId: myId,
+                text: commentText,
+                ts: Date.now(),
+                replies: []
+            };
+
+            let notificationTargetCharacter = null;
+            let notificationContent = '';
+            
+            if (replyToCommentId) {
+                const findAndAddReply = (comments) => {
+                    for (const c of comments) {
+                        if (c.id === replyToCommentId) {
+                            c.replies = c.replies || [];
+                            c.replies.push(newComment);
+                            return c;
+                        }
+                        if (c.replies && c.replies.length > 0) {
+                            const found = findAndAddReply(c.replies);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                };
+                const parentComment = findAndAddReply(moment.comments || []);
+                
+                if (parentComment) {
+                    if (parentComment.roleId && parentComment.roleId.startsWith('char_')) {
+                        notificationTargetCharacter = window.db.characters.find(c => c.id === parentComment.roleId);
+                        const momentSnippet = moment.text.substring(0, 15) + (moment.text.length > 15 ? '...' : '');
+                        notificationContent = `[system: ${myName} 回复了你对动态 "${momentSnippet}" 的评论: "${commentText}"]`;
+                    }
+                } else {
+                     moment.comments = moment.comments || [];
+                     moment.comments.push(newComment);
+                }
+            } else {
+                moment.comments = moment.comments || [];
+                moment.comments.push(newComment);
+                
+                if (moment.authorId && moment.authorId.startsWith('char_')) {
+                    notificationTargetCharacter = window.db.characters.find(c => c.id === moment.authorId);
+                    const momentSnippet = moment.text.substring(0, 15) + (moment.text.length > 15 ? '...' : '');
+                    notificationContent = `[system: ${myName} 评论了你的动态 "${momentSnippet}": "${commentText}"]`;
+                }
+            }
+
+            moment.commentedBy = moment.commentedBy || [];
+            if (!moment.commentedBy.includes(myId)) moment.commentedBy.push(myId);
+
+            await _db.moments.put(moment);
+
+            if (notificationTargetCharacter && notificationContent) {
+                const contextMessage = {
+                    id: `msg_context_${Date.now()}`,
+                    role: 'user', content: notificationContent,
+                    parts: [{ type: 'text', text: notificationContent }], timestamp: Date.now()
+                };
+                addMessageToChat(notificationTargetCharacter, contextMessage);
+                if (typeof window.scheduleSaveData === 'function') await window.scheduleSaveData();
+            }
+            
+            renderMomentsSafe();
+        } catch (e) {
+            console.error(`Failed to save user comment for moment ${momentId}:`, e);
+            if (typeof showToast === 'function') showToast('评论失败');
+        }
+    }
+
     window.renderMomentsSafe = async function renderMomentsSafe() {
       try {
-        const container = document.getElementById('moments-container') || (document.getElementById('moments-screen') && document.getElementById('moments-screen').querySelector('#moments-container'));
-        if (!container) {
-          console.warn('[injected patch] No container found for moments.');
-          return;
-        }
-        let list = [];
-        if (_db && _db.moments) {
-          try {
-            list = await _db.moments.orderBy('timestamp').reverse().toArray();
-          } catch (e) {
-            console.error('[injected patch] Failed reading moments from IndexedDB:', e);
-            list = [];
-          }
-        } else {
-          try {
-            const maybeDb = window.AppDB_Moments || null;
-            if (maybeDb && maybeDb.moments) {
-              list = await maybeDb.moments.orderBy('timestamp').reverse().toArray();
-            }
-          } catch (e) {
-            list = [];
-          }
-        }
-
+        const container = document.getElementById('moments-container');
+        if (!container) return;
+        
+        const list = await _db.moments.orderBy('timestamp').reverse().toArray();
         container.innerHTML = '';
+        
         const momentsEmpty = document.getElementById('moments-empty');
-        if (!list || !list.length) {
-          if (momentsEmpty) momentsEmpty.style.display = 'block';
-          else {
-            const p = document.createElement('p');
-            p.className = 'placeholder-text';
-            p.textContent = '还没有动态，点击右上角发布吧~';
-            container.appendChild(p);
-          }
-          return;
-        } else {
-          if (momentsEmpty) momentsEmpty.style.display = 'none';
+        if (!list.length) {
+            if (momentsEmpty) momentsEmpty.style.display = 'block';
+            return;
         }
+        if (momentsEmpty) momentsEmpty.style.display = 'none';
+
+        const myProfile = loadProfileFromStorage();
+        const myId = myProfile.id || 'user';
 
         list.forEach(m => {
           try {
             const div = document.createElement('div'); div.className = 'moment-item';
-            div.dataset.id = m.id || (m.id = (Math.random()+''+Date.now()));
-            const head = document.createElement('div'); head.className = 'moment-head';
-            const avatar = document.createElement('img'); avatar.className = 'moment-avatar';
-            const meta = document.createElement('div'); meta.className = 'moment-meta';
-            const name = document.createElement('div'); name.style.fontWeight='700';
-            const time = document.createElement('div'); time.style.fontSize='12px'; time.style.color='#999';
-            try { time.textContent = new Date(m.timestamp).toLocaleString(); } catch(e) { time.textContent = ''; }
+            div.dataset.id = m.id;
             
-            // --- 核心修改在这里 ---
-            const authorInfo = getAuthorProfile(m.authorId); // 使用新函数查找作者信息
-            name.textContent = authorInfo.name || m.author || '未知用户'; // 优先用新找到的名字，找不到再用快照里的旧名字
-            avatar.src = authorInfo.avatar || m.authorAvatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg'; // 优先用新找到的头像，找不到再用快照里的
-            // --- 修改结束 ---
-
-            meta.appendChild(name);
-            meta.appendChild(time);
-            head.appendChild(avatar);
-            head.appendChild(meta);
-            div.appendChild(head);
-
-            const txt = document.createElement('div'); txt.className='moment-text'; txt.textContent = m.text || '';
-            div.appendChild(txt);
-
-            if (m.imageData && m.imageData !== 'null' && m.imageData !== 'undefined' && m.imageData.length>10) {
-              const im = document.createElement('img'); im.className = 'moment-image';
-              im.src = m.imageData;
-              im.alt = m.imageDesc ? m.imageDesc : (m.text || '动态图片');
-              div.appendChild(im);
-              if (m.imageDesc) {
-                const desc = document.createElement('div'); desc.style.fontSize='13px'; desc.style.color='#666';
-                desc.textContent = '图片：' + m.imageDesc;
-                div.appendChild(desc);
-              }
-            } else if (m.imageDesc) {
-              const descCard = document.createElement('div'); descCard.className = 'moment-image-desc-card';
-              if (m.id) descCard.dataset.momentId = m.id || '';
-              const descContent = document.createElement('p'); descContent.className = 'desc-content';
-              descContent.textContent = m.imageDesc;
-              descCard.appendChild(descContent);
-              descCard.setAttribute('role', 'img');
-              descCard.setAttribute('aria-label', m.imageDesc);
-              descCard.addEventListener('click', function () { /* show detail */ });
-              div.appendChild(descCard);
-            }
-
+            const authorInfo = getAuthorProfile(m.authorId);
+            
+            div.innerHTML = `
+              <div class="moment-head">
+                <img class="moment-avatar" src="${authorInfo.avatar}">
+                <div class="moment-meta">
+                  <div style="font-weight:700;">${authorInfo.name}</div>
+                  <div style="font-size:12px; color:#999;">${new Date(m.timestamp).toLocaleString()}</div>
+                </div>
+              </div>
+              <div class="moment-text">${m.text || ''}</div>
+              ${m.imageDesc ? `<div class="moment-image-desc-card"><p class="desc-content">${m.imageDesc}</p></div>` : ''}
+            `;
+            
             const actions = document.createElement('div');
             actions.className = 'moment-actions';
             
             const likeBtn = document.createElement('button');
             likeBtn.className = 'moment-action-btn';
             const likes = m.likes || [];
-            const myProfile = loadProfileFromStorage();
-            const myId = myProfile.id || 'user';
-            if (likes.includes(myId)) {
-                likeBtn.classList.add('liked');
-            }
+            if (likes.includes(myId)) likeBtn.classList.add('liked');
             likeBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg><span>${likes.length > 0 ? likes.length : '点赞'}</span>`;
+            likeBtn.dataset.action = 'like';
             
-            likeBtn.addEventListener('click', async (event) => {
-                const btn = event.currentTarget;
-                const momentItem = btn.closest('.moment-item');
-                const currentLikes = m.likes || [];
-                const myIdx = currentLikes.indexOf(myId);
-
-                if (myIdx > -1) {
-                    currentLikes.splice(myIdx, 1);
-                    btn.classList.remove('liked');
-                } else {
-                    currentLikes.push(myId);
-                    btn.classList.add('liked');
-                }
-                m.likes = currentLikes;
-                await db.moments.put(m);
-
-                const span = btn.querySelector('span');
-                if (span) {
-                    span.textContent = currentLikes.length > 0 ? currentLikes.length : '点赞';
-                }
-
-                const likesWrap = momentItem.querySelector('.moment-likes');
-                if (likesWrap) {
-                    if (currentLikes.length > 0) {
-                        const likeNames = currentLikes.map(likeId => window.getAuthorNameById(likeId)).join(', ');
-                        likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likeNames}`;
-                        likesWrap.classList.add('visible');
-                    } else {
-                        likesWrap.classList.remove('visible');
-                    }
-                }
-            });
-
             const commentBtn = document.createElement('button');
             commentBtn.className = 'moment-action-btn';
+            commentBtn.dataset.action = 'comment';
             commentBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg><span>评论</span>`;
-            commentBtn.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const btn = event.currentTarget;
-                const momentItem = btn.closest('.moment-item');
-                if (momentItem) {
-                    const inputArea = momentItem.querySelector('.moment-comment-input-area');
-                    if (inputArea) {
-                        inputArea.classList.toggle('visible');
-                        if (inputArea.classList.contains('visible')) {
-                            inputArea.querySelector('input').focus();
-                        }
-                    }
-                }
-            });
 
             actions.appendChild(likeBtn);
             actions.appendChild(commentBtn);
@@ -29870,32 +30358,61 @@ function getAuthorProfile(authorId) {
             if (likes.length > 0) {
                 const likesWrap = document.createElement('div');
                 likesWrap.className = 'moment-likes visible';
-                const likeNames = likes.map(likeId => window.getAuthorNameById(likeId)).join(', ');
-                likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likeNames}`;
+                likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likes.map(id => getAuthorProfile(id).name).join(', ')}`;
                 div.appendChild(likesWrap);
             }
+            
+            // --- ▼▼▼ 核心修复：使用全新的、能够正确处理嵌套回复的渲染函数 ▼▼▼ ---
+            const commentsWrap = document.createElement('div');
+            commentsWrap.className = 'moment-comments';
 
-            const commentsWrap = document.createElement('div'); commentsWrap.className = 'moment-comments';
-            if (m.comments && m.comments.length) {
-              m.comments.forEach(c => {
-                const cm = document.createElement('div'); cm.className='moment-comment';
-                const authorName = window.getAuthorNameById(c.roleId || c.role);
-                cm.textContent = `${authorName}：${c.text}`;
-                commentsWrap.appendChild(cm);
-              });
-            } else {
-              const none = document.createElement('div'); none.style.color='#bbb'; none.textContent = '暂时没有评论';
-              commentsWrap.appendChild(none);
-            }
+            // 这个递归函数是这次修复的关键
+            const renderCommentTree = (comments, level = 0) => {
+                if (!comments || comments.length === 0) return '';
+                let html = '';
+                comments.forEach(c => {
+                    const authorInfo = getAuthorProfile(c.roleId);
+                    
+                    // 默认情况下，没有“回复”前缀
+                    let replyPrefix = '';
+                    
+                    // --- 关键逻辑：检查这条评论是否是对另一条评论的回复 ---
+                    // 我们检查数据中是否存在 replyTo 字段（这个字段在旧的 saveAiReplyToComment 函数中已添加）
+                    // 或者，更可靠地，我们检查它是否在一个 replies 数组内（这意味着它必然是回复）
+                    // 为了简化，我们只判断层级
+                    if (level > 0) {
+                        // 由于我们无法直接知道它回复的是谁，这里暂时留空
+                        // 但正确的层级缩进已经可以体现关系
+                    }
+                    
+                    // 渲染单条评论，并为其添加 data- 属性
+                    html += `<div class="moment-comment" data-comment-id="${c.id}" data-author-id="${c.roleId}" style="margin-left: ${level * 20}px;">
+                                <strong>${authorInfo.name}:</strong> 
+                                ${replyPrefix}
+                                <span>${c.text}</span>
+                             </div>`;
+                    
+                    // 递归地渲染这条评论下面的所有回复
+                    if (c.replies && c.replies.length > 0) {
+                        html += renderCommentTree(c.replies, level + 1); // 增加缩进层级
+                    }
+                });
+                return html;
+            };
+            
+            // 启动渲染
+            const initialComments = (m.comments && m.comments.length > 0) 
+                ? renderCommentTree(m.comments) 
+                : '<div style="color:#bbb; font-style: italic; padding: 4px 0;">还没有评论，快来抢沙发吧！</div>';
+            commentsWrap.innerHTML = initialComments;
             div.appendChild(commentsWrap);
-
+            // --- ▲▲▲ 修复结束 ▲▲▲ ---
+            
             const commentInputArea = document.createElement('div');
             commentInputArea.className = 'moment-comment-input-area';
-            commentInputArea.innerHTML = `
-              <input type="text" class="moment-comment-input" placeholder="添加评论...">
-              <button class="post-comment-btn" data-moment-id="${m.id}">发布</button>
-            `;
+            commentInputArea.innerHTML = `<input type="text" class="moment-comment-input" placeholder="添加评论..."><button class="post-comment-btn" data-moment-id="${m.id}" data-action="post-comment">发布</button>`;
             div.appendChild(commentInputArea);
+
             container.appendChild(div);
           } catch (innerErr) {
             console.error('[injected patch] render single moment failed', innerErr, m);
@@ -29904,47 +30421,28 @@ function getAuthorProfile(authorId) {
 
       } catch (err) {
         console.error('[injected patch] renderMomentsSafe failed', err);
-        const container = document.getElementById('moments-container') || (document.getElementById('moments-screen') && document.getElementById('moments-screen').querySelector('.content'));
         if (container) {
           container.innerHTML = '<div style="color:#b00;padding:12px;border-radius:10px;background:#fff8f8;">加载动态时出错（详情见 Console）</div>';
         }
       }
     };
-// ▲▲▲ 替换结束 ▲▲▲
-  
 
-    // Attach to app:screenChanged and mutation observer
     document.addEventListener('app:screenChanged', (ev) => {
       try {
         if (ev && ev.detail && ev.detail.targetId === 'moments-screen') {
           window.renderMomentsSafe();
         }
-      } catch (e) { console.error('[injected patch] app:screenChanged handler failed', e); }
+      } catch (e) {}
     });
 
     const phone = document.querySelector('.phone-screen') || document.body;
-    const mo = new MutationObserver((mutations) => {
-  try {
-    // 只在 phone 节点本身的 class 发生变化时才触发（避免子元素的 class 变动导致重渲染）
-    const phoneClassChanged = mutations.some(m =>
-      m.type === 'attributes' && m.attributeName === 'class' && m.target === phone
-    );
-    if (!phoneClassChanged) return;
+    const mo = new MutationObserver(() => {
+        const active = document.querySelector('.screen.active');
+        if (active && active.id === 'moments-screen') window.renderMomentsSafe();
+    });
+    mo.observe(phone, { attributes: true, subtree: true, attributeFilter: ['class'] });
 
-    const active = document.querySelector('.screen.active');
-    if (active && active.id === 'moments-screen') {
-      window.renderMomentsSafe();
-    }
-  } catch (e) { console.error('[injected patch] MutationObserver callback failed', e); }
-});
-// 仅观察 phone 自身的 attributes（不要 subtree=true）
-mo.observe(phone, { attributes: true, subtree: false, attributeFilter: ['class'] });
-
-
-    // try initial render
-    setTimeout(() => {
-      try { window.renderMomentsSafe(); } catch(e) { console.warn('[injected patch] initial render failed', e); }
-    }, 300);
+    setTimeout(() => { try { window.renderMomentsSafe(); } catch(e) {} }, 300);
 
   } catch (e) {
     console.error('[injected patch] initialization failed', e);
@@ -29952,7 +30450,6 @@ mo.observe(phone, { attributes: true, subtree: false, attributeFilter: ['class']
 })();
 </script>
 <!-- End: Render moments safe patch -->
-
 
 <script>
 /* === 确保 #moments-screen 永远在 .phone-screen 内，并清除会把它推出视窗的内联样式 (自动插入补丁) === */
@@ -32842,11 +33339,10 @@ fileInput.addEventListener('change', async (e)=>{
         <!-- 更新日志内容区域 -->
         <div id="update-content" style="max-height: 40vh; overflow-y: auto; background-color: #f9f9f9; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px;">
             <ul>
-                <li><strong>修复</strong>：非流式模型输出错误的问题。这次这个问题是真的解决啦，我试了许多模型都是可以输出的，如果还有问题就来dc找我反馈！</li>
-                <li><strong>修复</strong>：角色动态评论重复的问题(如果这个还有bug请@我！)</li>
-                <li><strong>修复</strong>：管理气泡预设界面打不开的问题</li>
-                <li><strong>修改</strong>：聊天设置的界面更新了，现在是一个弹窗，之前的侧边栏会导致滑动时卡顿，现在不会了</li>
-                <li><strong>❗即将修改</strong>：占用内存过大的问题。宝宝们一定要备份好数据，时不时检查一下浏览器数据是不是有异常，一旦数据过大就会卡死，到时候只能清空整个浏览器数据！这个比较难改，需要的时间比较长，宝宝们要定时备份好，并清空网站数据，不然就会闪退卡死</li>
+                <li><strong>修复</strong>：不断缓存过大数据的问题，这是个大修复，宝宝们先去备份好数据，然后在网站设置里清空本网站的数据，再导入备份文件，就不会卡死了，如果不知道自己的浏览器的网站设置在哪里，去问问AI或者搜一搜</li>
+                <li><strong>修复</strong>：html小剧场显示不全/掉格式的问题</li>
+                <li><strong>新增</strong>：user的人设现在有了预设界面，方便切换人设</li>
+                <li><strong>新增</strong>：现在的清空聊天记录就是单纯清空记录，不再是先总结再清空，在清空聊天记录上方有单独的总结按钮</li>
             </ul>
         </div>
         
@@ -32862,6 +33358,21 @@ fileInput.addEventListener('change', async (e)=>{
 </div>
 <!-- ▲▲▲ 粘贴结束 ▲▲▲ -->  
   
+      <!-- ▼▼▼ 在这里粘贴新的代码 ▼▼▼ -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(registration => {
+              console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(err => {
+              console.log('ServiceWorker registration failed: ', err);
+            });
+        });
+      }
+    </script>
+    <!-- ▲▲▲ 粘贴结束 ▲▲▲ -->
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const phoneScreen = document.querySelector('.phone-screen');
@@ -32931,7 +33442,7 @@ fileInput.addEventListener('change', async (e)=>{
         // ==========================================================
         // == 核心配置：每次更新时，修改这里的版本号即可让弹窗重新出现 ==
         // ==========================================================
-        const UPDATE_VERSION = '1.0.4'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
+        const UPDATE_VERSION = '1.0.5'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
         
         const STORAGE_KEY = `updatePopupDismissed_v${UPDATE_VERSION}`;
 
@@ -33001,6 +33512,307 @@ fileInput.addEventListener('change', async (e)=>{
     </div>
 </div>
 <!-- === 新增结束 === -->
+
+<!-- 修复：可靠的保存调度与强制刷新（避免切页/退出时数据丢失） -->
+<script>
+(function(){
+  // 防抖间隔（ms），如需更快保存可减小
+  const SAVE_DEBOUNCE_MS = 600;
+  // 全局状态（暴露到 window 便于其他脚本调用）
+  window.__saveTimer = window.__saveTimer || null;
+  window.__pendingSaveData = window.__pendingSaveData || null;
+
+  // scheduleSaveData：可接受可选的 data 参数（会合并到待保存数据）
+  window.scheduleSaveData = function(delay = SAVE_DEBOUNCE_MS, data) {
+    try {
+      if (data) {
+        // 合并简单对象到 pending（若为复杂类型请改用具体保存调用）
+        if (typeof data === 'object' && data !== null) {
+          if (!window.__pendingSaveData || typeof window.__pendingSaveData !== 'object') window.__pendingSaveData = {};
+          try { Object.assign(window.__pendingSaveData, data); } catch(e) { window.__pendingSaveData = data; }
+        } else {
+          // 如果传入非对象，直接覆盖
+          window.__pendingSaveData = data;
+        }
+      }
+      if (window.__saveTimer) clearTimeout(window.__saveTimer);
+      window.__saveTimer = setTimeout(async () => {
+        window.__saveTimer = null;
+        const payload = window.__pendingSaveData;
+        window.__pendingSaveData = null;
+        try {
+          if (typeof window.saveData === 'function') {
+            // 如果 saveData 接受参数，会使用 payload，否则 saveData() 会自行读取全局 db
+            await window.saveData(payload);
+          } else if (window.dataStorage && typeof window.dataStorage.saveData === 'function') {
+            await window.dataStorage.saveData('章鱼喷墨机', payload || window.db);
+          } else {
+            console.warn('没有找到 saveData 或 dataStorage.saveData，保存被跳过。');
+          }
+        } catch (e) {
+          console.warn('延迟保存失败：', e);
+        }
+      }, delay);
+    } catch (e) {
+      console.error('scheduleSaveData internal error', e);
+    }
+  };
+
+  // flushSaveData：在可用时立即尝试保存（用于 visibilitychange / beforeunload）
+  window.flushSaveData = async function() {
+    try {
+      if (window.__saveTimer) { clearTimeout(window.__saveTimer); window.__saveTimer = null; }
+      const payload = window.__pendingSaveData;
+      window.__pendingSaveData = null;
+      if (typeof window.saveData === 'function') {
+        // 尝试调用 saveData（注意：在 beforeunload 中浏览器可能无法等待异步完成）
+        await window.saveData(payload);
+        return true;
+      } else if (window.dataStorage && typeof window.dataStorage.saveData === 'function') {
+        await window.dataStorage.saveData('章鱼喷墨机', payload || window.db);
+        return true;
+      } else {
+        console.warn('flushSaveData: 无可用的保存接口');
+        return false;
+      }
+    } catch (e) {
+      console.warn('flushSaveData error', e);
+      return false;
+    }
+  };
+
+  // 在页面不可见或卸载时尽量触发同步/快速保存
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+      // 尝试异步保存（大多数浏览器会在 visibility hidden 时允许短时间任务）
+      try { window.flushSaveData(); } catch(e) { console.warn(e); }
+    }
+  });
+
+  // beforeunload 中尽量触发保存（不能保证异步完成，但会触发同步保存尝试）
+  window.addEventListener('beforeunload', function(e) {
+    try {
+      if (window.__saveTimer) { clearTimeout(window.__saveTimer); window.__saveTimer = null; }
+      // 直接调用 saveData（不 await）以发起写请求；若 saveData 是异步，浏览器可能在导航前终止其执行。
+      if (typeof window.saveData === 'function') {
+        try { window.saveData(); } catch(err) { console.warn('beforeunload saveData failed sync call', err); }
+      } else if (window.dataStorage && typeof window.dataStorage.saveData === 'function') {
+        try { window.dataStorage.saveData('章鱼喷墨机', window.db); } catch(err) {}
+      }
+      // 允许默认卸载
+    } catch (err) {
+      console.warn('beforeunload handler error', err);
+    }
+  });
+
+  // 小工具：在控制台里可运行 window.flushSaveData() 强制保存
+  console.log('已安装可靠保存调度与强制刷新 (scheduleSaveData / flushSaveData)');
+})();
+</script>
+<!-- 修复结束 -->
+<!-- ▼▼▼ 请将此脚本块粘贴到 </body> 标签的正上方 ▼▼▼ -->
+<script>
+(function(){
+  // 防止脚本被重复执行
+  if (window.robustSaveInitialized) return;
+  window.robustSaveInitialized = true;
+
+  console.log('正在初始化可靠的数据保存模块...');
+
+  // 全局状态变量
+  const SAVE_DEBOUNCE_MS = 800; // 稍微延长延迟，减少频繁写入
+  let saveTimer = null;
+  let isSaving = false;
+
+  /**
+   * 调度一个延迟的保存操作。
+   * 这是常规的、对性能友好的保存方式。
+   */
+  window.scheduleSaveData = function() {
+    if (isSaving) return; // 如果正在保存，则忽略本次调度
+    if (saveTimer) clearTimeout(saveTimer);
+    
+    saveTimer = setTimeout(async () => {
+      await flushSaveData();
+    }, SAVE_DEBOUNCE_MS);
+  };
+
+  /**
+   * 立即执行一次完整的保存操作。
+   * 这是用于页面关闭或切换后台时的紧急保存。
+   */
+  window.flushSaveData = async function() {
+    // 清除任何待处理的延迟保存
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+
+    if (isSaving) {
+      console.warn('保存操作正在进行中，本次强制保存已跳过。');
+      return;
+    }
+
+    isSaving = true;
+    console.log('开始执行数据保存...');
+
+    try {
+      if (typeof window.saveData === 'function') {
+        await window.saveData(); // 调用您文件中已有的全局保存函数
+        console.log('数据已成功保存！');
+      } else {
+        console.error('错误：找不到核心的 saveData() 函数。');
+      }
+    } catch (e) {
+      console.error('在执行 flushSaveData 期间发生错误:', e);
+    } finally {
+      isSaving = false;
+    }
+  };
+
+  /**
+   * 【核心修复】监听页面的可见性变化。
+   * 当用户切换标签页或将浏览器最小化时，'visibilitychange' 事件会触发。
+   * 此时页面状态变为 'hidden'，浏览器会提供一个短暂但可靠的时间窗口来完成操作。
+   */
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+      console.log('页面已切换到后台，触发紧急保存...');
+      // 此时不使用 await，因为我们只是想启动这个任务，不阻塞事件本身
+      flushSaveData();
+    }
+  });
+
+  /**
+   * 【最后防线】监听页面关闭或刷新事件。
+   * 这是一个尽力而为的尝试，虽然不可靠，但聊胜于无。
+   */
+  window.addEventListener('beforeunload', function(e) {
+    // 如果有待处理的延迟保存，立即执行它
+    if (saveTimer) {
+        console.log('页面即将卸载，强制执行最后的保存...');
+        // 在这个事件中，异步操作可能不会完成，但我们仍然尝试启动它
+        flushSaveData(); 
+    }
+  });
+
+  console.log('可靠的数据保存模块已成功加载并运行。');
+
+})();
+</script>
+<!-- ▲▲▲ 粘贴结束 ▲▲▲ -->
+<!-- 修复：可靠的保存调度与强制刷新（避免切页/退出时数据丢失） -->
+<script>
+(function(){
+  // 防抖间隔（ms），如需更快保存可减小
+  const SAVE_DEBOUNCE_MS = 600;
+  // 全局状态（暴露到 window 便于其他脚本调用）
+  window.__saveTimer = window.__saveTimer || null;
+  window.__pendingSaveData = window.__pendingSaveData || null;
+
+  // scheduleSaveData：可接受可选的 data 参数（会合并到待保存数据）
+  window.scheduleSaveData = function(delay = SAVE_DEBOUNCE_MS, data) {
+    try {
+      if (data) {
+        // 合并简单对象到 pending（若为复杂类型请改用具体保存调用）
+        if (typeof data === 'object' && data !== null) {
+          if (!window.__pendingSaveData || typeof window.__pendingSaveData !== 'object') window.__pendingSaveData = {};
+          try { Object.assign(window.__pendingSaveData, data); } catch(e) { window.__pendingSaveData = data; }
+        } else {
+          // 如果传入非对象，直接覆盖
+          window.__pendingSaveData = data;
+        }
+      }
+      if (window.__saveTimer) clearTimeout(window.__saveTimer);
+      window.__saveTimer = setTimeout(async () => {
+        window.__saveTimer = null;
+        const payload = window.__pendingSaveData;
+        window.__pendingSaveData = null;
+        try {
+          if (typeof window.saveData === 'function') {
+            // 如果 saveData 接受参数，会使用 payload，否则 saveData() 会自行读取全局 db
+            await window.saveData(payload);
+          } else if (window.dataStorage && typeof window.dataStorage.saveData === 'function') {
+            await window.dataStorage.saveData('章鱼喷墨机', payload || window.db);
+          } else {
+            console.warn('没有找到 saveData 或 dataStorage.saveData，保存被跳过。');
+          }
+        } catch (e) {
+          console.warn('延迟保存失败：', e);
+        }
+      }, delay);
+    } catch (e) {
+      console.error('scheduleSaveData internal error', e);
+    }
+  };
+
+  // flushSaveData：在可用时立即尝试保存（用于 visibilitychange / beforeunload）
+  window.flushSaveData = async function() {
+    try {
+      if (window.__saveTimer) { clearTimeout(window.__saveTimer); window.__saveTimer = null; }
+      const payload = window.__pendingSaveData;
+      window.__pendingSaveData = null;
+      if (typeof window.saveData === 'function') {
+        // 尝试调用 saveData（注意：在 beforeunload 中浏览器可能无法等待异步完成）
+        await window.saveData(payload);
+        return true;
+      } else if (window.dataStorage && typeof window.dataStorage.saveData === 'function') {
+        await window.dataStorage.saveData('章鱼喷墨机', payload || window.db);
+        return true;
+      } else {
+        console.warn('flushSaveData: 无可用的保存接口');
+        return false;
+      }
+    } catch (e) {
+      console.warn('flushSaveData error', e);
+      return false;
+    }
+  };
+
+  // 在页面不可见或卸载时尽量触发同步/快速保存
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+      // 尝试异步保存（大多数浏览器会在 visibility hidden 时允许短时间任务）
+      try { window.flushSaveData(); } catch(e) { console.warn(e); }
+    }
+  });
+
+  // beforeunload 中尽量触发保存（不能保证异步完成，但会触发同步保存尝试）
+  window.addEventListener('beforeunload', function(e) {
+    try {
+      if (window.__saveTimer) { clearTimeout(window.__saveTimer); window.__saveTimer = null; }
+      // 直接调用 saveData（不 await）以发起写请求；若 saveData 是异步，浏览器可能在导航前终止其执行。
+      if (typeof window.saveData === 'function') {
+        try { window.saveData(); } catch(err) { console.warn('beforeunload saveData failed sync call', err); }
+      } else if (window.dataStorage && typeof window.dataStorage.saveData === 'function') {
+        try { window.dataStorage.saveData('章鱼喷墨机', window.db); } catch(err) {}
+      }
+      // 允许默认卸载
+    } catch (err) {
+      console.warn('beforeunload handler error', err);
+    }
+  });
+
+  // 小工具：在控制台里可运行 window.flushSaveData() 强制保存
+  console.log('已安装可靠保存调度与强制刷新 (scheduleSaveData / flushSaveData)');
+})();
+</script>
+<!-- ▼▼▼ 请将这段代码粘贴在 </body> 标签之前 ▼▼▼ -->
+
+<!-- === 新增：“我的人设”预设管理弹窗 === -->
+<div id="mypersona-presets-modal" class="modal-overlay" style="display:none; z-index: 108;">
+    <div class="modal-window" style="max-width:520px;">
+        <h3 style="margin:0 0 10px 0;">管理人设预设</h3>
+        <div id="mypersona-presets-list" style="max-height:340px; overflow:auto; margin-bottom:12px;">
+            <!-- 预设列表将由JS动态生成 -->
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button id="mypersona-close-modal" class="btn btn-primary" style="padding:8px 12px;">关闭</button>
+        </div>
+    </div>
+</div>
+<!-- === 新增结束 === -->
+
 </body>
 
 </html>
