@@ -7006,6 +7006,7 @@ const showToast = (message) => {
     throw new Error('未能从API响应中解析出有效的文本内容。');
 }
 // ▲▲▲ 替换结束 ▲▲▲
+const MAX_HISTORY_PER_CHAT = 400; // 定义每个聊天最多保留200条消息，您可以根据需要调整这个数字
     document.addEventListener('DOMContentLoaded', () => {
     
 
@@ -9605,7 +9606,7 @@ function handlePngImport(file) {
 // ▼▼▼ 在这里粘贴下面的新代码 ▼▼▼
 
     // --- 新增：聊天记录管理 ---
-    const MAX_HISTORY_PER_CHAT = 200; // 定义每个聊天最多保留200条消息，您可以根据需要调整这个数字
+
 
     /**
      * 在应用启动时，修剪所有过长的聊天记录
@@ -15410,7 +15411,7 @@ else if (message.paymentRequestData) {
         tempContainer.innerHTML = finalContentHTML;
         const specialBubble = tempContainer.firstElementChild;
         
-        const specialClasses = ['image-bubble', 'pv-card', 'transfer-card', 'gift-card', 'file-card', 'location-card', 'music-card'];
+        const specialClasses = ['image-bubble', 'voice-bubble', 'pv-card', 'transfer-card', 'gift-card', 'file-card', 'location-card', 'music-card'];
         
         // ▼▼▼ 【核心修复】将 voiceMatch 变量的引用移动到它被声明之后 ▼▼▼
         const voiceMatch = content.match(/\[(?:.+?)的语音：([\s\S]+?)\]/);
@@ -15462,6 +15463,24 @@ else if (message.paymentRequestData) {
     }
     
     wrapper.appendChild(bubbleRow);
+    // --- 核心修复：为需要附加信息的气泡（如语音、礼物）补全其缺失的DOM结构 ---
+    const voiceMatchForFix = message.content.match(/\[(?:.+?)的语音：([\s\S]+?)\]/);
+    const privateGiftMatchForFix = message.content.match(/\[(?:.+?)送来的礼物：([\s\S]+?)\]/);
+    const groupGiftMatchForFix = message.content.match(/\[(.*?)\s*向\s*(.*?)\s*送来了礼物：([\s\S]+?)\]/);
+
+    if (voiceMatchForFix) {
+        const transcriptDiv = document.createElement('div');
+        transcriptDiv.className = 'voice-transcript';
+        transcriptDiv.textContent = voiceMatchForFix[1].trim();
+        wrapper.appendChild(transcriptDiv);
+    } else if (privateGiftMatchForFix || groupGiftMatchForFix) {
+        const match = privateGiftMatchForFix || groupGiftMatchForFix;
+        const description = groupGiftMatchForFix ? match[3].trim() : match[1].trim();
+        const descriptionDiv = document.createElement('div');
+        descriptionDiv.className = 'gift-card-description';
+        descriptionDiv.textContent = description;
+        wrapper.appendChild(descriptionDiv);
+    }
     return wrapper;
 }
 // END: 最终版 createMessageBubbleElement 函数
@@ -16605,16 +16624,18 @@ ${worldBooksAfter || ''}
 
     const forceTheater = db.apiSettings.forceHtmlTheater;
     const autoPostMoment = db.apiSettings.aiAutoPostMoment; // ▼▼▼ 在这里添加新代码 ▼▼▼
-    let prompt = `你正在一个扮演一个角色与用户线上聊天。
+    let prompt = `你正在扮演一个角色与用户线上聊天。
 ### 输出格式规范 ###
-你可以生成一条或多条消息，每条消息占一行。
+你可以生成一条或多条消息，但必须按照格式严格生成，每条信息必须被包裹在\`<ai_response></ai_response>\`中
 
 ### 输出示例  ###
+<ai_response>
 [${character.realName}的消息：这是第一条回复。]
 [${character.realName}的消息：这是第二条回复，我们可以聊聊别的话题。]
 [new-memory:{"title":"一个回忆标题","content":"...","commentary":"..."}]
+</ai_response>
 
-这是你需要遵守的规则列表：\n`;
+### 这是你需要遵守的规则列表：\n`;
     // === 新增：拉黑行为规则  ===
     prompt += `## 行为准则 \n`;
     prompt += `1. **拉黑状态处理**: 如果历史记录中最新的消息是 **"[system: 你已被 ${character.myName} 拉黑。]"**，你的行为模式将彻底改变。你**必须**：\n`;
@@ -16732,8 +16753,10 @@ ${worldBooksAfter || ''}
         momentPostingRule = `17. **发布动态 (可选能力)**
        - 你可以在“动态”页面发布内容，分享你的想法、感受或故事片段。
        - **发布时机**: 这是一个**特殊行为**，不应频繁使用。请在对话发生转折、角色产生强烈情绪、或重要互动后，根据你的人设**自主决定**是否发布动态。
+        - **重要提示**: 在生成这条发布动态的指令消息的**同时**，你**必须**像平常一样，保持人设，继续我们的对话，回复**至少一条**正常的聊天消息（例如 \`[${character.realName}的消息：...]\`）。发布动态是一个后台行为，你不应该因此中断与我的聊天。
        - **发布格式 (严格遵守)**: 当你决定发布时，请仅生成一条特殊指令消息（该指令不会在聊天中显示）。格式为：
          \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这里是图片的文字描述（可选）"}]\``;
+         
     }
 
     prompt += `
@@ -17238,6 +17261,15 @@ async function processAiCommands(fullResponse, chat) {
         else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
     }
 
+    // ...
+    // (省略其他指令的处理)
+
+    // 如果动态被修改过，刷新动态页面
+    if (momentsWereModified) {
+        if (typeof renderMoments === 'function') { try { await renderMoments(); } catch (e) {} }
+        else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
+    }
+
     return fullResponse.trim(); // 返回清理干净的、只剩下聊天内容的文本
 }
 // ===============================================================
@@ -17289,6 +17321,7 @@ async function processStream(response, chat, apiType) {
     }
 
     if (fullResponse) {
+        console.log("【调试信息】AI完整原始回复:", fullResponse); //  <-- 在这里添加这一行代码
         // ▼▼▼ 在这里添加新的解析逻辑 ▼▼▼
         let contentToProcess = fullResponse;
         const responseMatch = fullResponse.match(/<ai_response>([\s\S]*)<\/ai_response>/);
@@ -26342,6 +26375,41 @@ JSON格式示例:
     return prompt;
 }
 
+// --- Safe addMoment helper (injected by assistant) ---
+async function addMomentToDB(momentObj) {
+  // 1) Prefer global Dexie instance AppDB_Moments if available
+  try {
+    if (window.AppDB_Moments && window.AppDB_Moments.moments && typeof window.AppDB_Moments.moments.add === 'function') {
+      return window.AppDB_Moments.moments.add(momentObj);
+    }
+  } catch(e){ /* ignore */ }
+
+  // 2) If window.db.moments looks like Dexie, use it
+  try {
+    if (window.db && window.db.moments && typeof window.db.moments.add === 'function') {
+      return window.db.moments.add(momentObj);
+    }
+  } catch(e){ /* ignore */ }
+
+  // 3) Fallback to in-memory array and try to persist via saveData()
+  if (!window.db) window.db = {};
+  if (!Array.isArray(window.db.moments)) window.db.moments = [];
+  window.db.moments.push(momentObj);
+
+  if (typeof window.saveData === 'function') {
+    try { await window.scheduleSaveData(); } catch(e){ console.warn('saveData fallback failed', e); }
+  }
+
+  // 4) Try to mirror into AppDB_Moments (put to avoid duplicate key issues)
+  try {
+    if (window.AppDB_Moments && window.AppDB_Moments.moments && typeof window.AppDB_Moments.moments.put === 'function') {
+      await window.AppDB_Moments.moments.put(momentObj);
+    }
+  } catch(e){ console.warn('mirror to AppDB_Moments failed', e); }
+
+  return Promise.resolve();
+}
+
 // ===============================================================
 // END: AI空间功能
 // ===============================================================
@@ -29606,40 +29674,6 @@ if (typeof setupMentions === 'function') {
     // 4) 发布动态（写入 Dexie）
     
 
-// --- Safe addMoment helper (injected by assistant) ---
-async function addMomentToDB(momentObj) {
-  // 1) Prefer global Dexie instance AppDB_Moments if available
-  try {
-    if (window.AppDB_Moments && window.AppDB_Moments.moments && typeof window.AppDB_Moments.moments.add === 'function') {
-      return window.AppDB_Moments.moments.add(momentObj);
-    }
-  } catch(e){ /* ignore */ }
-
-  // 2) If window.db.moments looks like Dexie, use it
-  try {
-    if (window.db && window.db.moments && typeof window.db.moments.add === 'function') {
-      return window.db.moments.add(momentObj);
-    }
-  } catch(e){ /* ignore */ }
-
-  // 3) Fallback to in-memory array and try to persist via saveData()
-  if (!window.db) window.db = {};
-  if (!Array.isArray(window.db.moments)) window.db.moments = [];
-  window.db.moments.push(momentObj);
-
-  if (typeof window.saveData === 'function') {
-    try { await window.scheduleSaveData(); } catch(e){ console.warn('saveData fallback failed', e); }
-  }
-
-  // 4) Try to mirror into AppDB_Moments (put to avoid duplicate key issues)
-  try {
-    if (window.AppDB_Moments && window.AppDB_Moments.moments && typeof window.AppDB_Moments.moments.put === 'function') {
-      await window.AppDB_Moments.moments.put(momentObj);
-    }
-  } catch(e){ console.warn('mirror to AppDB_Moments failed', e); }
-
-  return Promise.resolve();
-}
 
 // --- Replaced postForm submit handler (injected by assistant) ---
 postForm.addEventListener('submit', async (ev) => {
