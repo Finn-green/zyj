@@ -9792,7 +9792,7 @@ function handlePngImport(file) {
 // ===============================================================
 // END: 角色卡导入功能核心函数
 // ===============================================================
-        const init = async () => {
+const init = async () => {
 		
 // ▼▼▼ 在这里粘贴下面的新代码 ▼▼▼
 
@@ -9955,10 +9955,12 @@ setupBondInvitationSystem();
 setupDailyQuestionFeature(); // <-- 新增这一行
     setupMoodWeatherFeature();   // <-- 新增这一行
 setupPomodoroFeature();
-setupSearchInChat();
+        setupSearchInChat();
 
-};
+        setupAiResponseViewer();
+        setupFormatReferenceModal(); // 新增：初始化格式参考弹窗功能
 
+    };
 
 
 
@@ -14540,26 +14542,86 @@ async function handleBondRequestResponse(messageId, response) {
     renderChatList(); // 刷新聊天列表以显示（或移除）爱心
     getAiReply();
 }
+/**
+ * Finds the relevant AI raw response and opens the viewer modal.
+ * Handles both user and AI messages.
+ * @param {string} messageId The ID of the message that was long-pressed.
+ */
+/**
+ * Finds the relevant AI raw response and opens the viewer modal.
+ * Handles both user and AI messages.
+ * @param {string} messageId The ID of the message that was long-pressed.
+ */
+function findAndOpenAiResponseViewer(messageId) {
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    if (!chat) return;
 
-        function handleMessageLongPress(messageWrapper, x, y) {
-            if (isInMultiSelectMode) return;
-            clearTimeout(longPressTimer);
-            const messageId = messageWrapper.dataset.id;
-            const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-            const message = chat.history.find(m => m.id === messageId);
-            if (!message) return;
+    const messageIndex = chat.history.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+    
+    const currentMessage = chat.history[messageIndex];
+    let targetMessageForViewer = null;
 
-            const isImageRecognitionMsg = message.parts && message.parts.some(p => p.type === 'image');
-            const isVoiceMessage = /\[.*?的语音：.*?\]/.test(message.content);
-            const isStickerMessage = /\[.*?的表情包：.*?\]|\[.*?发送的表情包：.*?\]/.test(message.content);
-            const isPhotoVideoMessage = /\[.*?发来的照片\/视频：.*?\]/.test(message.content);
-            const isTransferMessage = /\[.*?给你转账：.*?\]|\[.*?的转账：.*?\]|\[.*?向.*?转账：.*?\]/.test(message.content);
-            const isGiftMessage = /\[.*?送来的礼物：.*?\]|\[.*?向.*?送来了礼物：.*?\]/.test(message.content);
-            const isInvisibleMessage = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]/.test(message.content);
+    if (currentMessage.role === 'assistant') {
+        // ▼▼▼ 核心修改点 ▼▼▼
+        // 如果长按的是AI消息，则向前追溯，找到这一轮AI回复的第一条消息
+        let firstAiMessageIndex = messageIndex;
+        for (let i = messageIndex - 1; i >= 0; i--) {
+            if (chat.history[i].role !== 'assistant') {
+                break; // 遇到非AI消息就停止
+            }
+            firstAiMessageIndex = i;
+        }
+        targetMessageForViewer = chat.history[firstAiMessageIndex];
+        // ▲▲▲ 修改结束 ▲▲▲
+    } else { // role === 'user' or 'system'
+        // 如果长按的是用户消息，向后查找第一个AI消息
+        for (let i = messageIndex + 1; i < chat.history.length; i++) {
+            if (chat.history[i].role === 'assistant') {
+                targetMessageForViewer = chat.history[i];
+                break;
+            }
+            if (chat.history[i].role === 'user') {
+                break;
+            }
+        }
+    }
 
-            let menuItems = [];
-            menuItems.push({label: '引用', action: () => startQuoteReply(messageId)});
-     const isSent = messageWrapper.classList.contains('sent');
+    if (targetMessageForViewer && targetMessageForViewer.rawAiResponse) {
+        // 如果找到了目标消息并且它有原始回复，打开查看器
+        openAiResponseViewer(targetMessageForViewer.id);
+    } else {
+        // 否则，打开一个空的查看器并显示提示
+        const modal = document.getElementById('ai-response-viewer-modal');
+        const textarea = document.getElementById('ai-raw-content-textarea');
+        const idInput = document.getElementById('editing-ai-message-id');
+        
+        idInput.value = ''; 
+        textarea.value = '';
+        textarea.placeholder = 'ଘ(੭ˊᵕˋ)੭* ੈ✩‧₊˚ 看起来AI还没来得及回复哦，或者这条消息没有对应的AI回复记录。'; 
+        modal.classList.add('visible');
+    }
+}
+function handleMessageLongPress(messageWrapper, x, y) {
+    if (isInMultiSelectMode) return;
+    clearTimeout(longPressTimer);
+    const messageId = messageWrapper.dataset.id;
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    const message = chat.history.find(m => m.id === messageId);
+    if (!message) return;
+
+    const isImageRecognitionMsg = message.parts && message.parts.some(p => p.type === 'image');
+    const isVoiceMessage = /\[.*?的语音：.*?\]/.test(message.content);
+    const isStickerMessage = /\[.*?的表情包：.*?\]|\[.*?发送的表情包：.*?\]/.test(message.content);
+    const isPhotoVideoMessage = /\[.*?发来的照片\/视频：.*?\]/.test(message.content);
+    const isTransferMessage = /\[.*?给你转账：.*?\]|\[.*?的转账：.*?\]|\[.*?向.*?转账：.*?\]/.test(message.content);
+    const isGiftMessage = /\[.*?送来的礼物：.*?\]|\[.*?向.*?送来了礼物：.*?\]/.test(message.content);
+    const isInvisibleMessage = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]/.test(message.content);
+
+    let menuItems = [];
+    menuItems.push({label: '引用', action: () => startQuoteReply(messageId)});
+    
+    const isSent = messageWrapper.classList.contains('sent');
     const twoMinutes = 2 * 60 * 1000;
     if (isSent && (Date.now() - message.timestamp < twoMinutes) && !message.recalled) {
         menuItems.push({
@@ -14567,71 +14629,273 @@ async function handleBondRequestResponse(messageId, response) {
             action: async () => {
                 const msgIndex = chat.history.findIndex(m => m.id === messageId);
                 if (msgIndex > -1) {
-                    // 核心修改：不再修改content，而是添加标记
                     chat.history[msgIndex].recalled = true;
                     chat.history[msgIndex].recalledBy = 'user';
-                    // 同时保存一份原始内容，以便查看
                     chat.history[msgIndex].originalContent = chat.history[msgIndex].content;
-                    
                     scheduleSaveData();
-                    renderMessages(false, true); // 重新渲染，让消息变成占位符
+                    renderMessages(false, true);
                 }
             }
         });
     }
 
-menuItems.push({
+    menuItems.push({
         label: '长截图 (选择)',
         action: () => enterScreenshotSelectionMode(messageId)
     });
+
     if (!isImageRecognitionMsg && !isVoiceMessage && !isStickerMessage && !isPhotoVideoMessage && !isTransferMessage && !isGiftMessage && !isInvisibleMessage) {
         menuItems.push({label: '编辑', action: () => startMessageEdit(messageId)});
     }
-// ▼▼▼ 在这里粘贴新的代码 ▼▼▼
-if (currentChatType === 'private') {
-                const character = db.characters.find(c => c.id === currentChatId);
-                menuItems.push({
-                    label: '修改状态',
-                    action: async () => {
-                        const currentStatus = character.status || '在线';
-                        const newStatus = prompt(`请输入“${character.remarkName}”的新状态：`, currentStatus);
 
-                        if (newStatus !== null) {
-                            const trimmedStatus = newStatus.trim();
-                            const bufferKey = `pendingAction_updateStatus_${character.id}`;
-                            
-                            try {
-                                // 1. 同步“救生艇”
-                                localStorage.setItem(bufferKey, trimmedStatus);
-                                
-                                // 2. 更新内存
-                                character.status = trimmedStatus;
-                                
-                                // 3. 异步“货轮”
-                                await dataStorage.saveData(`character_${character.id}`, character);
-                                
-                                // 4. 清理“救生艇”
-                                localStorage.removeItem(bufferKey);
-                                
-                                // 5. 更新UI
-                                document.getElementById('chat-room-status-text').textContent = character.status;
-                                showToast('角色状态已更新');
-                                
-                            } catch (error) {
-                                showToast('状态更新失败');
-                                console.error("更新角色状态失败:", error);
-                            }
-                        }
+    if (currentChatType === 'private') {
+        const character = db.characters.find(c => c.id === currentChatId);
+        menuItems.push({
+            label: '修改状态',
+            action: async () => {
+                const currentStatus = character.status || '在线';
+                const newStatus = prompt(`请输入“${character.remarkName}”的新状态：`, currentStatus);
+
+                if (newStatus !== null) {
+                    const trimmedStatus = newStatus.trim();
+                    const bufferKey = `pendingAction_updateStatus_${character.id}`;
+                    
+                    try {
+                        localStorage.setItem(bufferKey, trimmedStatus);
+                        character.status = trimmedStatus;
+                        await dataStorage.saveData(`character_${character.id}`, character);
+                        localStorage.removeItem(bufferKey);
+                        
+                        document.getElementById('chat-room-status-text').textContent = character.status;
+                        showToast('角色状态已更新');
+                        
+                    } catch (error) {
+                        showToast('状态更新失败');
+                        console.error("更新角色状态失败:", error);
                     }
-                });
                 }
-    // --- 新增结束 ---    
+            }
+        });
+    }
+    
+    // ▼▼▼ 核心修改点：无条件添加“查看AI返回内容”选项 ▼▼▼
+    menuItems.push({
+        label: '查看AI返回内容',
+        action: () => findAndOpenAiResponseViewer(messageId)
+    });
+    // ▲▲▲ 修改结束 ▲▲▲
+
     menuItems.push({label: '删除', action: () => enterMultiSelectMode(messageId)});
 
-            if (menuItems.length > 0) {
-                createContextMenu(menuItems, x, y);
-            }
+    if (menuItems.length > 0) {
+        createContextMenu(menuItems, x, y);
+    }
+}
+        
+        /**
+ * Opens the AI Raw Response Viewer modal.
+ * @param {string} messageId The ID of the message to inspect.
+ */
+function openAiResponseViewer(messageId) {
+    const modal = document.getElementById('ai-response-viewer-modal');
+    const textarea = document.getElementById('ai-raw-content-textarea');
+    const idInput = document.getElementById('editing-ai-message-id');
+
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    const message = chat.history.find(m => m.id === messageId);
+
+    if (message && message.rawAiResponse) {
+        idInput.value = messageId;
+        textarea.value = message.rawAiResponse;
+        modal.classList.add('visible');
+    } else {
+        showToast('找不到原始AI返回内容。');
+    }
+}
+
+/**
+ * Saves the edited AI raw response and refreshes the chat view.
+ */
+async function saveAndRefreshAiResponse() {
+    const modal = document.getElementById('ai-response-viewer-modal');
+    const textarea = document.getElementById('ai-raw-content-textarea');
+    const messageId = document.getElementById('editing-ai-message-id').value;
+    const newRawContent = textarea.value.trim();
+
+    // 如果没有消息ID或内容，说明是空弹窗，直接关闭
+    if (!messageId || !newRawContent) {
+        modal.classList.remove('visible');
+        return;
+    }
+
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    if (!chat) return;
+
+    // --- 核心改造：同步救生艇 + 异步货轮 ---
+
+    // 1. 找到被编辑消息（AI回复的第一条）的索引
+    const originalMessageIndex = chat.history.findIndex(m => m.id === messageId);
+    if (originalMessageIndex === -1) return;
+
+    // 2. 找到这轮AI回复的所有消息，并记录它们的ID
+    let endIndex = originalMessageIndex;
+    for (let i = originalMessageIndex + 1; i < chat.history.length; i++) {
+        if (chat.history[i].role === 'user') break;
+        endIndex = i;
+    }
+    const messagesToDeleteCount = (endIndex - originalMessageIndex) + 1;
+
+    // 3. 重新处理被用户编辑过的原始文本
+    let contentToProcess = newRawContent;
+    const responseMatch = newRawContent.match(/<ai_response>([\s\S]*)<\/ai_response>/);
+    if (responseMatch && responseMatch[1]) {
+        contentToProcess = responseMatch[1].trim();
+    }
+    const processedContent = await processAiCommands(contentToProcess, chat);
+    const newMessagesFromAI = getMixedContent(processedContent, chat).filter(item => item.content.trim() !== '');
+
+    const messagesToAdd = [];
+    newMessagesFromAI.forEach(item => {
+        const message = {
+            id: `msg_edited_${Date.now()}_${Math.random()}`,
+            role: 'assistant',
+            content: item.content.trim(),
+            parts: [{type: item.type, text: item.content.trim()}],
+            timestamp: Date.now(),
+            rawAiResponse: newRawContent // 保存编辑后的原始文本
+        };
+        if(currentChatType === 'group') {
+             const nameMatch = item.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)：/);
+             if(nameMatch) {
+                 const sender = chat.members.find(m => m.realName === nameMatch[1] || m.groupNickname === nameMatch[1]);
+                 if(sender) message.senderId = sender.id;
+             }
         }
+        messagesToAdd.push(message);
+    });
+
+    try {
+        // 4. 更新内存
+        chat.history.splice(originalMessageIndex, messagesToDeleteCount, ...messagesToAdd);
+        
+        // 5. 异步“货轮”：直接调用我们最可靠的聊天记录保存函数
+        await dataStorage.saveChatMessages(currentChatId, currentChatType, chat.history);
+        
+        // 6. 更新UI
+        modal.classList.remove('visible');
+        showToast('内容已保存并更新');
+        renderMessages(false, true);
+
+    } catch (error) {
+        showToast('编辑保存失败，请刷新重试');
+        console.error("保存AI回复编辑失败:", error);
+        // 可以在这里添加回滚内存的逻辑，但通常让用户刷新是更安全的选择
+    }
+}
+
+/**
+ * Initializes event listeners for the AI Response Viewer modal.
+ */
+function setupAiResponseViewer() {
+    const form = document.getElementById('ai-response-edit-form');
+    const cancelBtn = document.getElementById('cancel-ai-response-edit-btn');
+    const modal = document.getElementById('ai-response-viewer-modal');
+    
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveAndRefreshAiResponse();
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        modal.classList.remove('visible');
+    });
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('visible');
+        }
+    });
+}
+/**
+ * Sets up event listeners for the new Format Reference modal.
+ */
+function setupFormatReferenceModal() {
+    const modal = document.getElementById('format-reference-modal');
+    const openBtn = document.getElementById('show-format-reference-btn');
+    const closeBtn = document.getElementById('close-format-reference-btn');
+
+    openBtn.addEventListener('click', () => {
+        renderFormatReferenceContent();
+        modal.classList.add('visible');
+    });
+
+    closeBtn.addEventListener('click', () => {
+        modal.classList.remove('visible');
+    });
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('visible');
+        }
+    });
+}
+
+/**
+ * Dynamically generates the content for the format reference modal.
+ */
+function renderFormatReferenceContent() {
+    const contentEl = document.getElementById('format-reference-content');
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    
+    // 使用通用占位符，因为群聊中角色名会变化
+    const characterName = "{角色真名}"; 
+    
+    let html = `
+        <h4>基本规则</h4>
+        <p>AI的每次回复都应该被 <code>&lt;ai_response&gt;...&lt;/ai_response&gt;</code> 标签包裹。在这个标签内部，可以有多条不同格式的消息，每条消息占一行。</p>
+        
+        <h4>标准消息格式</h4>
+        <ul>
+            <li><b>普通消息:</b> <code>[${characterName}的消息：你好呀]</code></li>
+            <li><b>语音消息:</b> <code>[${characterName}的语音：我想你了]</code></li>
+            <li><b>图片/表情包:</b> <code>[${characterName}发送的表情包：害羞]</code></li>
+            <li><b>照片/视频:</b> <code>[${characterName}发来的照片/视频：这是我们上次去的山顶]</code></li>
+            <li><b>转账:</b> <code>[${characterName}的转账：520元；备注：爱你]</code></li>
+            <li><b>礼物:</b> <code>[${characterName}送来的礼物：一束玫瑰花]</code></li>
+            <li><b>HTML小剧场:</b><br><code>&lt;!-- START_THEATER --&gt;</code><br>...你的HTML代码...<br><code>&lt;!-- END_THEATER --&gt;</code></li>
+        </ul>
+
+        <h4>特殊指令格式 (用户不可见)</h4>
+        <ul>
+            <li><b>更新状态:</b> <code>[${characterName}更新状态为：在忙]</code></li>
+            <li><b>生成回忆:</b> <code>[new-memory:{"title":"标题","content":"...","commentary":"..."}]</code></li>
+            <li><b>发起通话:</b> <code>[call:${characterName}]</code></li>
+            <li><b>同意/拒绝通话:</b> <code>[call-accept]</code> 或 <code>[call-decline]</code></li>
+        </ul>
+
+        <hr>
+
+        <h4>常见格式错误与修正方法</h4>
+        <ol>
+            <li><b>问题：</b>AI一次性回复了多句话，但没有换行，导致它们被渲染成了一条消息。<br>
+                <b>修正：</b>在 <code>&lt;/ai_response&gt;</code> 标签内，确保每一句独立的 <code>[${characterName}的消息：...]</code> 都**单独占一行**。</li>
+            
+            <li><b>问题：</b>AI使用了中文的方括号 <code>【】</code> 或其他错误符号。<br>
+                <b>修正：</b>所有指令的括号都必须是英文的方括号 <code>[]</code>。</li>
+
+            <li><b>问题：</b>AI打错了关键字，例如把“消息”写成了“信息”。<br>
+                <b>修正：</b>请仔细检查关键字是否正确，如 <code>的消息：</code>, <code>的语音：</code>, <code>发送的表情包：</code> 等。</li>
+
+            <li><b>问题：</b>整个回复没有被 <code>&lt;ai_response&gt;</code> 包裹。<br>
+                <b>修正：</b>在所有内容的最前面加上 <code>&lt;ai_response&gt;</code>，在最后面加上 <code>&lt;/ai_response&gt;</code>。</li>
+            
+            <li><b>问题：</b>HTML小剧场显示不出来。<br>
+                <b>修正：</b>检查HTML代码是否被 <code>&lt;!-- START_THEATER --&gt;</code> 和 <code>&lt;!-- END_THEATER --&gt;</code> 正确包裹。</li>
+        </ol>
+    `;
+    
+    contentEl.innerHTML = html;
+}
 
 // ▼▼▼ 用这个新函数，替换旧的 startMessageEdit ▼▼▼
 
@@ -17600,7 +17864,6 @@ async function processAiCommands(fullResponse, chat) {
 // ===============================================================
 // END: 新增的中央指令处理器
 // ===============================================================
-// --- 新代码结束 ---
 async function processStream(response, chat, apiType) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -17913,6 +18176,7 @@ if (currentChatType === 'private') {
                     content: item.content.trim(),
                     parts: [{type: item.type, text: item.content.trim()}],
                     timestamp: Date.now(),
+                    rawAiResponse: fullResponse // 为每一条消息都附加原始回复
                 };
 
                 const receivedTransferRegex = new RegExp(`\\[${character.realName}的转账：.*?元；备注：.*?\\]`);
@@ -17939,7 +18203,8 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
                             content: item.content.trim(),
                             parts: [{type: item.type, text: item.content.trim()}],
                             timestamp: Date.now(),
-                            senderId: sender.id
+                            senderId: sender.id,
+                            rawAiResponse: fullResponse // 为每一条消息都附加原始回复
                         };
                         addMessageToChat(group,message);
                         addMessageBubble(message);
@@ -17993,7 +18258,6 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
         hideTypingIndicator();
     }
 }
-
         // --- Other Sub-systems Setup (Stickers, Voice, etc.) ---
         function setupImageRecognition() {
             imageRecognitionBtn.addEventListener('click', () => {
@@ -29630,8 +29894,8 @@ input:checked + .slider:before {
     display: flex;
     width: 100%; /* 宽度占满，以便左右对齐 */
     justify-content: space-between; /* 核心：将左右两列推向屏幕边缘 */
-    align-items: flex-start;
-    padding: 0 40px; /* 屏幕左右留出边距 */
+    align-items: center;
+    padding: 0 15px; /* 屏幕左右留出边距 */
     margin-top: 20px; /* 与上方元素的间距 */
 }
 
@@ -34017,10 +34281,7 @@ fileInput.addEventListener('change', async (e)=>{
         <!-- 更新日志内容区域 -->
         <div id="update-content" style="max-height: 40vh; overflow-y: auto; background-color: #f9f9f9; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px;">
             <ul>
-                <li><strong>修复</strong>：不断缓存过大数据的问题，这是个大修复，宝宝们先去备份好数据，然后在网站设置里清空本网站的数据，再导入备份文件，就不会卡死了，如果不知道自己的浏览器的网站设置在哪里，去问问AI或者搜一搜</li>
-                <li><strong>修复</strong>：html小剧场显示不全/掉格式的问题</li>
-                <li><strong>新增</strong>：user的人设现在有了预设界面，方便切换人设</li>
-                <li><strong>新增</strong>：现在的清空聊天记录就是单纯清空记录，不再是先总结再清空，在清空聊天记录上方有单独的总结按钮</li>
+                <li><strong>新增</strong>：查看ai原始返回内容的功能，要是发现角色只发了表情包，就长按聊天界面打开查看ai返回的内容，大概率是掉格式了，手动修改一下，要是一直有掉格式的问题，用括号大法鞭打一下ai！</li>
             </ul>
         </div>
         
@@ -34035,6 +34296,7 @@ fileInput.addEventListener('change', async (e)=>{
     </div>
 </div>
 <!-- ▲▲▲ 粘贴结束 ▲▲▲ -->  
+
   
       <!-- ▼▼▼ 在这里粘贴新的代码 ▼▼▼ -->
     <script>
@@ -34120,7 +34382,7 @@ fileInput.addEventListener('change', async (e)=>{
         // ==========================================================
         // == 核心配置：每次更新时，修改这里的版本号即可让弹窗重新出现 ==
         // ==========================================================
-        const UPDATE_VERSION = '1.0.5'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
+        const UPDATE_VERSION = '1.0.6'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
         
         const STORAGE_KEY = `updatePopupDismissed_v${UPDATE_VERSION}`;
 
@@ -34490,6 +34752,36 @@ fileInput.addEventListener('change', async (e)=>{
     </div>
 </div>
 <!-- === 新增结束 === -->
+<!-- START: AI Raw Response Viewer Modal -->
+<div id="ai-response-viewer-modal" class="modal-overlay">
+    <div class="modal-window" style="max-height: 85vh; display: flex; flex-direction: column;">
+        <h3>查看/编辑AI原始返回内容</h3>
+        <form id="ai-response-edit-form" style="overflow-y: auto; flex-grow: 1; padding: 5px;">
+            <input type="hidden" id="editing-ai-message-id">
+            <div class="form-group">
+                <textarea id="ai-raw-content-textarea" rows="15" required placeholder="AI的原始返回内容..."></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="button" class="btn btn-neutral" id="cancel-ai-response-edit-btn" style="flex: 1;">取消</button>
+                <button type="button" class="btn btn-secondary" id="show-format-reference-btn" style="flex: 1;">格式参考</button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- END: AI Raw Response Viewer Modal -->
+<!-- START: AI Format Reference Modal -->
+<div id="format-reference-modal" class="modal-overlay" style="z-index: 1002;">
+    <div class="modal-window" style="max-height: 85vh; display: flex; flex-direction: column;">
+        <h3 style="text-align: center; margin-bottom: 15px;">AI返回格式参考</h3>
+        <div id="format-reference-content" style="flex-grow: 1; overflow-y: auto; background-color: #f9f9f9; padding: 15px; border-radius: 8px; font-size: 14px; line-height: 1.7;">
+            <!-- 内容将由JS动态生成 -->
+        </div>
+        <button id="close-format-reference-btn" class="btn btn-primary" style="margin-top: 15px;">我明白了</button>
+    </div>
+</div>
+<!-- END: AI Format Reference Modal -->
+
 
 </body>
 
