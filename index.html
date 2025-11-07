@@ -3463,6 +3463,19 @@ html, body {
 }
 
 /* --- ▲▲▲ 添加/替换结束 ▲▲▲ */
+/* ▼▼▼ 在 <style> 标签末尾添加 ▼▼▼ */
+
+/* --- 主页拖动抓取手势 --- */
+#home-container {
+    cursor: grab; /* 默认显示“可抓取”的小手掌 */
+    user-select: none; /* 防止拖动时选中页面上的文字 */
+}
+
+#home-container.is-dragging {
+    cursor: grabbing; /* 按下鼠标拖动时，显示“正在抓取”的握拳手势 */
+}
+
+/* --- ▲▲▲ 添加结束 ▲▲▲ */
     </style>
     <!-- === moments 固定在 phone-screen 内的修复样式 (自动插入补丁) === -->
 <style>
@@ -12503,45 +12516,116 @@ const updatePlayerUI = () => {
         }
 
         // --- App Setup Functions ---
-        // START: 新增主页翻页逻辑
+// START: 新增主页翻页逻辑
 function setupHomeScreenPaging() {
-    const container = document.querySelector('.home-page-wrapper');
-    const dots = document.querySelectorAll('.home-page-indicator .dot');
-    let touchStartX = 0;
+    const container = document.getElementById('home-container');
+    const wrapper = container.querySelector('.home-page-wrapper');
+    const dots = container.querySelectorAll('.home-page-indicator .dot');
+    
+    // 状态变量
     let currentPageIndex = 0;
+    let startX = 0;
+    let startY = 0; // 用于判断滑动方向
+    let isDragging = false; // 用于鼠标拖动
+    let hasSwipedHorizontally = false; // 用于触摸滑动，判断是否阻止默认行为
 
+    // 页面切换的核心函数 (保持不变)
     function goToPage(index) {
         if (index < 0 || index > 1) return;
-        container.style.transform = `translateX(-${index * 50}%)`;
+        wrapper.style.transform = `translateX(-${index * 50}%)`;
         dots.forEach(dot => dot.classList.remove('active'));
-        dots[index].classList.add('active');
+        if (dots[index]) {
+            dots[index].classList.add('active');
+        }
         currentPageIndex = index;
     }
 
-    document.getElementById('home-container').addEventListener('touchstart', (e) => {
-        touchStartX = e.touches[0].clientX;
-    });
+    // --- 触摸事件处理 (兼容iOS和安卓) ---
+    container.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        hasSwipedHorizontally = false; // 每次触摸开始时重置
+    }, { passive: true }); // 初始时允许浏览器默认行为，以便垂直滚动
 
-    document.getElementById('home-container').addEventListener('touchend', (e) => {
-        const touchEndX = e.changedTouches[0].clientX;
-        const diff = touchEndX - touchStartX;
+    container.addEventListener('touchmove', (e) => {
+        if (!e.touches || e.touches.length === 0) return;
 
-        if (Math.abs(diff) > 50) { // 阈值，防止误触
+        const deltaX = e.touches[0].clientX - startX;
+        const deltaY = e.touches[0].clientY - startY;
+
+        // 首次判断滑动方向
+        if (!hasSwipedHorizontally) {
+            // 如果水平滑动的距离大于垂直距离，则判定为横向滑动
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                hasSwipedHorizontally = true;
+            }
+        }
+
+        // 一旦确认为横向滑动，就阻止浏览器的默认行为（如页面上下滚动）
+        // 这是修复iOS滑动问题的关键
+        if (hasSwipedHorizontally) {
+            e.preventDefault();
+        }
+    }, { passive: false }); // 必须设置为 passive: false 才能调用 e.preventDefault()
+
+    container.addEventListener('touchend', (e) => {
+        // 如果不是有效的横向滑动，则忽略
+        if (!hasSwipedHorizontally) return;
+
+        const endX = e.changedTouches[0].clientX;
+        const diff = endX - startX;
+
+        // 只有滑动距离超过50像素才触发翻页
+        if (Math.abs(diff) > 50) {
             if (diff < 0 && currentPageIndex === 0) {
-                goToPage(1); // Swipe left
+                goToPage(1); // 向左滑，去往第二页
             } else if (diff > 0 && currentPageIndex === 1) {
-                goToPage(0); // Swipe right
+                goToPage(0); // 向右滑，返回第一页
             }
         }
     });
 
+    // --- 鼠标事件处理 (用于电脑端) ---
+    container.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        container.classList.add('is-dragging'); // 切换为“抓取中”手势
+        e.preventDefault(); // 防止拖动时选中文字
+    });
+
+    // 在整个窗口上监听 mouseup，以防鼠标在容器外松开
+    window.addEventListener('mouseup', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        container.classList.remove('is-dragging'); // 恢复“可抓取”手势
+
+        const endX = e.clientX;
+        const diff = endX - startX;
+
+        if (Math.abs(diff) > 50) {
+            if (diff < 0 && currentPageIndex === 0) {
+                goToPage(1);
+            } else if (diff > 0 && currentPageIndex === 1) {
+                goToPage(0);
+            }
+        }
+    });
+
+    // 监听鼠标移出窗口，防止拖拽状态被卡住
+    document.addEventListener('mouseleave', () => {
+         if (isDragging) {
+             isDragging = false;
+             container.classList.remove('is-dragging');
+         }
+    });
+    
+    // 小圆点的点击事件 (保持不变)
     dots.forEach(dot => {
         dot.addEventListener('click', () => goToPage(parseInt(dot.dataset.index)));
     });
 }
-
 // END: 新增主页翻页逻辑
-// START: 新增渲染器应用核心逻辑
+
 // START: 渲染器应用核心逻辑 (完整功能版)
 function setupRendererApp() {
 // ▼▼▼ 在 setupRendererApp 函数的开头，粘贴这个新的辅助函数 ▼▼▼
