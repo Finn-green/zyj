@@ -23167,11 +23167,19 @@ function setupSoulBondApp() {
     });
 
     // 保存设置
-// ▼▼▼ 在 setupSoulBondApp 函数中，找到并替换这个事件监听器 ▼▼▼
+// ▼▼▼ 用这个代码块替换旧的 settingsForm 事件监听器 ▼▼▼
     settingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const character = db.characters.find(c => c.id === currentChatId);
-        if (!character) return;
+        
+        // ▼▼▼ 核心修复：从心灵羁绊屏幕获取正确的 characterId ▼▼▼
+        const characterId = document.getElementById('soul-bond-screen').dataset.characterId;
+        const character = db.characters.find(c => c.id === characterId);
+        // ▲▲▲ 修复结束 ▲▲▲
+
+        if (!character) {
+            showToast('错误：找不到当前角色，无法保存');
+            return;
+        }
 
         const newSoulBondData = {
             ...(character.soulBondData || { photos: [], wishlist: [] }),
@@ -23222,10 +23230,19 @@ function setupSoulBondApp() {
     });
 
     // 保存自定义照片
+// ▼▼▼ 用这个代码块替换旧的 customPhotoForm 事件监听器 ▼▼▼
     customPhotoForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const character = db.characters.find(c => c.id === currentChatId);
-        if (!character) return;
+
+        // ▼▼▼ 核心修复：从心灵羁绊屏幕获取正确的 characterId ▼▼▼
+        const characterId = document.getElementById('soul-bond-screen').dataset.characterId;
+        const character = db.characters.find(c => c.id === characterId);
+        // ▲▲▲ 修复结束 ▲▲▲
+
+        if (!character) {
+            showToast('错误：找不到当前角色，无法保存');
+            return;
+        }
         
         const imageUrl = document.getElementById('custom-photo-preview').style.backgroundImage.slice(5, -2);
         const description = document.getElementById('custom-photo-desc').value.trim();
@@ -23243,6 +23260,7 @@ function setupSoulBondApp() {
         addCustomPhotoModal.classList.remove('visible');
         showToast('一张新的回忆照片已添加！');
     });
+// ▲▲▲ 替换结束 ▲▲▲
 
     // --- 愿望清单功能 ---
     setupWishlistApp();
