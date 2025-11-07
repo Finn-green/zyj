@@ -3465,14 +3465,24 @@ html, body {
 /* --- ▲▲▲ 添加/替换结束 ▲▲▲ */
 /* ▼▼▼ 在 <style> 标签末尾添加 ▼▼▼ */
 
-/* --- 主页拖动抓取手势 --- */
+/* --- 主页手势拖动功能样式 --- */
 #home-container {
-    cursor: grab; /* 默认显示“可抓取”的小手掌 */
-    user-select: none; /* 防止拖动时选中页面上的文字 */
+    cursor: grab; /* 电脑端默认显示“可抓取”的小手掌 */
+    user-select: none; /* 防止拖动时选中页面上的文字和图标 */
+    -webkit-user-select: none; /* 兼容旧版Safari */
 }
 
 #home-container.is-dragging {
-    cursor: grabbing; /* 按下鼠标拖动时，显示“正在抓取”的握拳手势 */
+    cursor: grabbing; /* 电脑端拖动时，显示“正在抓取”的握拳手势 */
+}
+
+/* 
+  这个新类至关重要：
+  当用户手指或鼠标按住拖动时，我们会给 .home-page-wrapper 添加这个类，
+  临时禁用 transition 动画，让页面能够瞬间、完美地跟随手指/鼠标移动。
+*/
+.home-page-wrapper.no-transition {
+    transition: none !important;
 }
 
 /* --- ▲▲▲ 添加结束 ▲▲▲ */
@@ -12516,22 +12526,29 @@ const updatePlayerUI = () => {
         }
 
         // --- App Setup Functions ---
-// START: 新增主页翻页逻辑
+// START: 最终版主页翻页手势引擎 (兼容iOS/安卓/电脑)
 function setupHomeScreenPaging() {
     const container = document.getElementById('home-container');
     const wrapper = container.querySelector('.home-page-wrapper');
     const dots = container.querySelectorAll('.home-page-indicator .dot');
     
-    // 状态变量
+    // --- 状态变量 ---
     let currentPageIndex = 0;
-    let startX = 0;
-    let startY = 0; // 用于判断滑动方向
-    let isDragging = false; // 用于鼠标拖动
-    let hasSwipedHorizontally = false; // 用于触摸滑动，判断是否阻止默认行为
+    let isTracking = false;    // 是否正在追踪滑动/拖动
+    let startX = 0;            // 起始X坐标
+    let startY = 0;            // 起始Y坐标 (用于判断方向)
+    let currentX = 0;          // 当前X坐标
+    let deltaX = 0;            // X轴上的总位移
+    let swipeDirection = null; // 滑动方向 ('horizontal', 'vertical', or null)
 
-    // 页面切换的核心函数 (保持不变)
+    // --- 核心功能函数 ---
+
+    // 切换到指定页面
     function goToPage(index) {
-        if (index < 0 || index > 1) return;
+        if (index < 0) index = 0;
+        if (index > 1) index = 1;
+
+        wrapper.classList.remove('no-transition'); // 恢复动画
         wrapper.style.transform = `translateX(-${index * 50}%)`;
         dots.forEach(dot => dot.classList.remove('active'));
         if (dots[index]) {
@@ -12540,91 +12557,98 @@ function setupHomeScreenPaging() {
         currentPageIndex = index;
     }
 
-    // --- 触摸事件处理 (兼容iOS和安卓) ---
-    container.addEventListener('touchstart', (e) => {
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        hasSwipedHorizontally = false; // 每次触摸开始时重置
-    }, { passive: true }); // 初始时允许浏览器默认行为，以便垂直滚动
+    // 更新页面实时位置 (跟随手指/鼠标)
+    function updatePosition() {
+        if (!isTracking) return;
+        // 实时位移 = 初始偏移 + 手指/鼠标的移动量
+        const baseOffset = -currentPageIndex * 50;
+        const movePercent = (deltaX / container.clientWidth) * 50;
+        wrapper.style.transform = `translateX(${baseOffset + movePercent}%)`;
+    }
 
-    container.addEventListener('touchmove', (e) => {
-        if (!e.touches || e.touches.length === 0) return;
+    // --- 事件处理函数 ---
 
-        const deltaX = e.touches[0].clientX - startX;
-        const deltaY = e.touches[0].clientY - startY;
+    function handleStart(e) {
+        isTracking = true;
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        startY = e.touches ? e.touches[0].clientY : e.clientY;
+        currentX = startX;
+        deltaX = 0;
+        swipeDirection = null;
+        wrapper.classList.add('no-transition'); // 拖动开始，禁用动画
+        container.classList.add('is-dragging'); // 切换鼠标手势
+    }
 
-        // 首次判断滑动方向
-        if (!hasSwipedHorizontally) {
-            // 如果水平滑动的距离大于垂直距离，则判定为横向滑动
-            if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                hasSwipedHorizontally = true;
+    function handleMove(e) {
+        if (!isTracking) return;
+        
+        currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        deltaX = currentX - startX;
+        const deltaY = currentY - startY;
+
+        // **iOS 问题的关键解决点：早期方向锁定**
+        if (swipeDirection === null) {
+            // 只有当滑动距离超过一个微小阈值时才判断方向
+            if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+                swipeDirection = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
             }
         }
 
-        // 一旦确认为横向滑动，就阻止浏览器的默认行为（如页面上下滚动）
-        // 这是修复iOS滑动问题的关键
-        if (hasSwipedHorizontally) {
+        // 如果确定是横向滑动，则阻止浏览器默认行为
+        if (swipeDirection === 'horizontal') {
             e.preventDefault();
+            updatePosition(); // 实时更新页面位置
         }
-    }, { passive: false }); // 必须设置为 passive: false 才能调用 e.preventDefault()
+    }
 
-    container.addEventListener('touchend', (e) => {
-        // 如果不是有效的横向滑动，则忽略
-        if (!hasSwipedHorizontally) return;
+    function handleEnd() {
+        if (!isTracking) return;
+        isTracking = false;
+        container.classList.remove('is-dragging');
+        wrapper.classList.remove('no-transition');
 
-        const endX = e.changedTouches[0].clientX;
-        const diff = endX - startX;
-
-        // 只有滑动距离超过50像素才触发翻页
-        if (Math.abs(diff) > 50) {
-            if (diff < 0 && currentPageIndex === 0) {
-                goToPage(1); // 向左滑，去往第二页
-            } else if (diff > 0 && currentPageIndex === 1) {
-                goToPage(0); // 向右滑，返回第一页
-            }
+        // 如果不是横向滑动，或者滑动距离太小，则弹回原位
+        if (swipeDirection !== 'horizontal' || Math.abs(deltaX) < 50) {
+            goToPage(currentPageIndex);
+            return;
         }
-    });
 
-    // --- 鼠标事件处理 (用于电脑端) ---
-    container.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        startX = e.clientX;
-        container.classList.add('is-dragging'); // 切换为“抓取中”手势
-        e.preventDefault(); // 防止拖动时选中文字
-    });
+        // 根据滑动方向决定翻页
+        if (deltaX < 0) { // 向左滑
+            goToPage(currentPageIndex + 1);
+        } else { // 向右滑
+            goToPage(currentPageIndex - 1);
+        }
+    }
 
-    // 在整个窗口上监听 mouseup，以防鼠标在容器外松开
-    window.addEventListener('mouseup', (e) => {
-        if (!isDragging) return;
-        isDragging = false;
-        container.classList.remove('is-dragging'); // 恢复“可抓取”手势
+    // --- 绑定所有事件 ---
 
-        const endX = e.clientX;
-        const diff = endX - startX;
+    // 触摸事件
+    container.addEventListener('touchstart', handleStart, { passive: true });
+    container.addEventListener('touchmove', handleMove, { passive: false });
+    container.addEventListener('touchend', handleEnd);
+    container.addEventListener('touchcancel', handleEnd);
 
-        if (Math.abs(diff) > 50) {
-            if (diff < 0 && currentPageIndex === 0) {
-                goToPage(1);
-            } else if (diff > 0 && currentPageIndex === 1) {
-                goToPage(0);
-            }
+    // 鼠标事件
+    container.addEventListener('mousedown', handleStart);
+    window.addEventListener('mousemove', (e) => {
+        if (isTracking) {
+             handleMove(e);
         }
     });
+    window.addEventListener('mouseup', handleEnd);
 
-    // 监听鼠标移出窗口，防止拖拽状态被卡住
-    document.addEventListener('mouseleave', () => {
-         if (isDragging) {
-             isDragging = false;
-             container.classList.remove('is-dragging');
-         }
-    });
-    
-    // 小圆点的点击事件 (保持不变)
+    // 小圆点点击事件
     dots.forEach(dot => {
-        dot.addEventListener('click', () => goToPage(parseInt(dot.dataset.index)));
+        dot.addEventListener('click', (e) => {
+            e.stopPropagation(); // 防止触发拖动
+            goToPage(parseInt(dot.dataset.index));
+        });
     });
 }
-// END: 新增主页翻页逻辑
+// END: 最终版主页翻页手势引擎
 
 // START: 渲染器应用核心逻辑 (完整功能版)
 function setupRendererApp() {
