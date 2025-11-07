@@ -9846,6 +9846,16 @@ if (!db.userDiaries) {
             applyLayoutPreference();
            applyGlobalCss(db.globalCustomCss);
             window.db = db;
+
+            // ▼▼▼ 核心修改点：在这里添加初始化逻辑 ▼▼▼
+            if (!db.customWidgets || !Array.isArray(db.customWidgets) || db.customWidgets.length === 0) {
+                db.customWidgets = [
+                    { id: 'widget1', text: '自定义', imageUrl: 'https://i.ibb.co/6r11fGg/avatar1.png' },
+                    { id: 'widget2', text: '自定义', imageUrl: 'https://i.ibb.co/d28n82t/avatar2.png' }
+                ];
+            }
+            // ▲▲▲ 修改结束 ▲▲▲
+
             document.body.addEventListener('click', (e) => {
                 if (e.target.closest('.context-menu')) {
                     e.stopPropagation();
@@ -9859,14 +9869,12 @@ if (!db.userDiaries) {
                     switchScreen(backBtn.getAttribute('data-target'));
                 }
 
-                // Consolidated overlay closing logic
                 const openOverlay = document.querySelector('.modal-overlay.visible, .action-sheet-overlay.visible');
                 if (openOverlay && e.target === openOverlay) {
                     openOverlay.classList.remove('visible');
                 }
             });
 
-            // Specific nav links that switch screens
             document.body.addEventListener('click', e => {
                 const navLink = e.target.closest('.app-icon[data-target]');
                 if (navLink) {
@@ -9915,13 +9923,12 @@ if (db.characters.some(c => c.userDiaries && c.userDiaries.length > 0)) {
             setupGroupChatSystem();
             setupCustomizeApp();
             setupTutorialApp();
-            setupFileSystem(); // --- NEW ---
-            setupLocationSystem(); // --- NEW ---
+            setupFileSystem(); 
+            setupLocationSystem(); 
             setupFileDisplaySystem(); 
-            // (在 init 函数内部，靠近其他 setup...() 函数的地方添加)
-setupAvatarFrameSystem(); // 新增：初始化头像框功能
+setupAvatarFrameSystem(); 
             setupVoiceCallSystem();
-            setupDiarySystem(); // --- 在这里添加这一行 ---
+            setupDiarySystem(); 
             setupMusicPlayer();
             setupNotificationSystem();
             setupMomentsEventListeners();
@@ -9931,34 +9938,32 @@ setupTrajectoryAndHeartSoundSystem();
           setupUserPersonaPresets();
           setupRollbackFeature(); 
           setupContinueWritingFeature(); 
-  setupMemoriesSystem(); // <-- 添加这一行
+  setupMemoriesSystem(); 
   setupMemorySummaryModal(); 
   setupAiPovApp();
-  setupWalletApp(); // <-- 添加这一行
-  // (在 init() 函数的末尾添加)
+  setupWalletApp(); 
 setupBlockFeature(); 
-setInterval(checkTimedUnblocks, 60000); // 每分钟检查一次到期的AI拉黑
+setInterval(checkTimedUnblocks, 60000); 
 setupProactiveAiSystem();
-setupHomeScreenPaging(); // 新增：主页翻页
-        setupRendererApp();      // 新增：渲染器应用
+setupHomeScreenPaging(); 
+        setupRendererApp();      
  setupViewRecalledModal(); 
- // 在 init() 函数的末尾添加
 setupBatchStickerUpload();
 setupMallApp();
 setupPaymentHistoryActions();
-setupAiSpaceApps(); // 初始化AI空间所有App
-          applyAiSpaceWallpaper(db.aiSpaceWallpaper); // 新增：应用已保存的AI手机壁紙
+setupAiSpaceApps(); 
+          applyAiSpaceWallpaper(db.aiSpaceWallpaper); 
 setupSoulBondApp();
 setupDiaryExchangeApp();
 setupBondMissYouHeartFeature();
 setupBondInvitationSystem();
-setupDailyQuestionFeature(); // <-- 新增这一行
-    setupMoodWeatherFeature();   // <-- 新增这一行
+setupDailyQuestionFeature(); 
+    setupMoodWeatherFeature();   
 setupPomodoroFeature();
         setupSearchInChat();
 
         setupAiResponseViewer();
-        setupFormatReferenceModal(); // 新增：初始化格式参考弹窗功能
+        setupFormatReferenceModal(); 
 
     };
 
@@ -24771,87 +24776,94 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
                 console.log("一段新的回忆已保存:", newMemory);
             }
         }
-        // --- 自定义主屏幕小组件功能 ---
-// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 setupCustomWidgetSystem 函数 ▼▼▼
-        function setupCustomWidgetSystem() {
-            const modal = document.getElementById('customize-widget-modal');
-            const form = document.getElementById('customize-widget-form');
-            const fileUpload = document.getElementById('widget-image-upload');
-            const imageUrlInput = document.getElementById('widget-image-url-input');
-            const editingWidgetIdInput = document.getElementById('editing-widget-id');
-            const widgetTextInput = document.getElementById('widget-text-input');
-            const homeContainerEl = document.getElementById('home-container');
+// --- 自定义主屏幕小组件功能 ---
+function setupCustomWidgetSystem() {
+    const modal = document.getElementById('customize-widget-modal');
+    const form = document.getElementById('customize-widget-form');
+    const fileUpload = document.getElementById('widget-image-upload');
+    const imageUrlInput = document.getElementById('widget-image-url-input');
+    const editingWidgetIdInput = document.getElementById('editing-widget-id');
+    const widgetTextInput = document.getElementById('widget-text-input');
+    const homeContainerEl = document.getElementById('home-container');
 
-            const openWidgetEditor = (widgetId) => { /* ... (打开弹窗的逻辑不变) ... */ };
-
-            if(homeContainerEl) {
-                homeContainerEl.addEventListener('click', (e) => {
-                    const widget = e.target.closest('.contact-widget[data-widget-id]');
-                    if (widget) { openWidgetEditor(widget.dataset.widgetId); }
-                });
-            }
-
-            // --- 核心改造：为表单提交添加可靠的保存逻辑 ---
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const widgetId = editingWidgetIdInput.value;
-                const newText = widgetTextInput.value.trim();
-                const newImageUrl = imageUrlInput.value.trim();
-                
-                const widgetIndex = db.customWidgets.findIndex(w => w.id === widgetId);
-                if (widgetIndex === -1) return;
-
-                const newWidgetData = { ...db.customWidgets[widgetIndex], text: newText, imageUrl: newImageUrl };
-                const bufferKey = `pendingAction_updateWidget_${widgetId}`;
-
-                try {
-                    // 1. 同步“救生艇”
-                    localStorage.setItem(bufferKey, JSON.stringify(newWidgetData));
-                    // 2. 更新内存
-                    db.customWidgets[widgetIndex] = newWidgetData;
-                    // 3. 异步“货轮”
-                    const baseData = await dataStorage.getData('章鱼喷墨机') || {};
-                    baseData.customWidgets = db.customWidgets;
-                    await dataStorage.saveData('章鱼喷墨机', baseData);
-                    // 4. 清理“救生艇”
-                    localStorage.removeItem(bufferKey);
-                    
-                    // 5. 更新UI
-                    modal.classList.remove('visible');
-                    showToast('组件已更新！');
-                    const widgetEl = document.getElementById(`custom-widget-${widgetId === 'widget1' ? '1' : '2'}`);
-                    if(widgetEl){
-                        widgetEl.querySelector('img').src = newImageUrl;
-                        widgetEl.querySelector('span').textContent = newText;
-                    }
-                } catch (error) {
-                    showToast('组件更新失败');
-                    console.error("更新自定义组件失败:", error);
-                }
-            });
-
-// 处理文件上传
-            fileUpload.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    try {
-                        const compressedUrl = await compressImage(file, { quality: 0.8, maxWidth: 200, maxHeight: 200 });
-                        imageUrlInput.value = compressedUrl;
-                    } catch (error) {
-                        showToast('图片处理失败，请重试');
-                    } finally {
-                        e.target.value = null; // 清空文件输入
-                    }
-                }
-            });
-
-            // 点击弹窗外部区域关闭
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    modal.classList.remove('visible');
-                }
-            });
+    // ▼▼▼ 核心修复：在这里实现完整的函数逻辑 ▼▼▼
+    const openWidgetEditor = (widgetId) => {
+        const widgetData = db.customWidgets.find(w => w.id === widgetId);
+        if (!widgetData) {
+            showToast('错误：找不到该组件的数据');
+            return;
         }
+        editingWidgetIdInput.value = widgetId;
+        widgetTextInput.value = widgetData.text;
+        imageUrlInput.value = widgetData.imageUrl;
+        modal.classList.add('visible');
+    };
+    // ▲▲▲ 修复结束 ▲▲▲
+
+    if(homeContainerEl) {
+        homeContainerEl.addEventListener('click', (e) => {
+            const widget = e.target.closest('.contact-widget[data-widget-id]');
+            if (widget) { 
+                openWidgetEditor(widget.dataset.widgetId); 
+            }
+        });
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const widgetId = editingWidgetIdInput.value;
+        const newText = widgetTextInput.value.trim();
+        const newImageUrl = imageUrlInput.value.trim();
+        
+        const widgetIndex = db.customWidgets.findIndex(w => w.id === widgetId);
+        if (widgetIndex === -1) return;
+
+        const newWidgetData = { ...db.customWidgets[widgetIndex], text: newText, imageUrl: newImageUrl };
+        const bufferKey = `pendingAction_updateWidget_${widgetId}`;
+
+        try {
+            localStorage.setItem(bufferKey, JSON.stringify(newWidgetData));
+            db.customWidgets[widgetIndex] = newWidgetData;
+            
+            const baseData = await dataStorage.getData('章鱼喷墨机') || {};
+            baseData.customWidgets = db.customWidgets;
+            await dataStorage.saveData('章鱼喷墨机', baseData);
+            
+            localStorage.removeItem(bufferKey);
+            
+            modal.classList.remove('visible');
+            showToast('组件已更新！');
+            const widgetEl = document.getElementById(widgetId === 'widget1' ? 'custom-widget-1' : 'custom-widget-2');
+            if(widgetEl){
+                widgetEl.querySelector('img').src = newImageUrl;
+                widgetEl.querySelector('span').textContent = newText;
+            }
+        } catch (error) {
+            showToast('组件更新失败');
+            console.error("更新自定义组件失败:", error);
+        }
+    });
+
+    fileUpload.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            try {
+                const compressedUrl = await compressImage(file, { quality: 0.8, maxWidth: 200, maxHeight: 200 });
+                imageUrlInput.value = compressedUrl;
+            } catch (error) {
+                showToast('图片处理失败，请重试');
+            } finally {
+                e.target.value = null;
+            }
+        }
+    });
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('visible');
+        }
+    });
+}
 // ▲▲▲ 替换结束 ▲▲▲
 /// ▼▼▼ 请用这两个新函数，完整替换掉旧的 summarizeAndClearHistory 函数 ▼▼▼
 
