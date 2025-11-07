@@ -23171,10 +23171,8 @@ function setupSoulBondApp() {
     settingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
-        // ▼▼▼ 核心修复：从心灵羁绊屏幕获取正确的 characterId ▼▼▼
         const characterId = document.getElementById('soul-bond-screen').dataset.characterId;
         const character = db.characters.find(c => c.id === characterId);
-        // ▲▲▲ 修复结束 ▲▲▲
 
         if (!character) {
             showToast('错误：找不到当前角色，无法保存');
@@ -23191,20 +23189,22 @@ function setupSoulBondApp() {
             },
             background: document.getElementById('bond-background-url-input').value
         };
-        const bufferKey = `pendingAction_saveSoulBondData_${character.id}`;
+        
+        character.soulBondData = newSoulBondData;
 
+        // ▼▼▼ 核心修复：使用原子化保存，直接写入数据库 ▼▼▼
         try {
-            localStorage.setItem(bufferKey, JSON.stringify(newSoulBondData));
-            character.soulBondData = newSoulBondData;
             await dataStorage.saveData(`character_${character.id}`, character);
-            localStorage.removeItem(bufferKey);
-            
-            renderSoulBondScreen();
-            settingsModal.classList.remove('visible');
             showToast('设置已保存');
         } catch (error) {
-            showToast('心灵羁绊设置保存失败');
+            console.error("保存羁绊设置失败:", error);
+            showToast('设置保存失败，请查看控制台');
+            return;
         }
+        // ▲▲▲ 修复结束 ▲▲▲
+        
+        renderSoulBondScreen();
+        settingsModal.classList.remove('visible');
     });
 // ▲▲▲ 替换结束 ▲▲▲
 
@@ -23230,14 +23230,12 @@ function setupSoulBondApp() {
     });
 
     // 保存自定义照片
-// ▼▼▼ 用这个代码块替换旧的 customPhotoForm 事件监听器 ▼▼▼
+// ▼▼▼ 用这个代码块替换 setupSoulBondApp 函数中旧的 customPhotoForm 事件监听器 ▼▼▼
     customPhotoForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        // ▼▼▼ 核心修复：从心灵羁绊屏幕获取正确的 characterId ▼▼▼
         const characterId = document.getElementById('soul-bond-screen').dataset.characterId;
         const character = db.characters.find(c => c.id === characterId);
-        // ▲▲▲ 修复结束 ▲▲▲
 
         if (!character) {
             showToast('错误：找不到当前角色，无法保存');
@@ -23255,10 +23253,19 @@ function setupSoulBondApp() {
         character.soulBondData = character.soulBondData || { photos: [], wishlist: [] };
         character.soulBondData.photos.unshift({ imageUrl, description });
 
-        scheduleSaveData();
+        // ▼▼▼ 核心修复：使用原子化保存，直接写入数据库 ▼▼▼
+        try {
+            await dataStorage.saveData(`character_${character.id}`, character);
+            showToast('一张新的回忆照片已添加！');
+        } catch (error) {
+            console.error("保存回忆照片失败:", error);
+            showToast('保存失败，请查看控制台');
+            return; // 保存失败则不更新UI
+        }
+        // ▲▲▲ 修复结束 ▲▲▲
+        
         renderSoulBondScreen();
         addCustomPhotoModal.classList.remove('visible');
-        showToast('一张新的回忆照片已添加！');
     });
 // ▲▲▲ 替换结束 ▲▲▲
 
@@ -23456,21 +23463,27 @@ function setupWishlistApp() {
         addWishFab.addEventListener('click', () => openWishEditor());
     }
     
-    // 4. 处理愿望编辑器表单提交
+// ▼▼▼ 用这个代码块替换 setupWishlistApp 函数中旧的 wishForm 事件监听器 ▼▼▼
     wishForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const character = db.characters.find(c => c.id === document.getElementById('soul-bond-screen').dataset.characterId);
-        if (!character) return;
+        
+        const characterId = document.getElementById('soul-bond-screen').dataset.characterId;
+        const character = db.characters.find(c => c.id === characterId);
+
+        if (!character) {
+            showToast('错误：找不到当前角色，无法保存愿望');
+            return;
+        }
         
         const wishText = wishTextInput.value.trim();
         const editingId = editingWishIdInput.value;
 
         character.soulBondData = character.soulBondData || { photos: [], wishlist: [] };
         
-        if (editingId) { // 编辑模式 (虽然按钮移除，但保留逻辑以备将来使用)
+        if (editingId) {
             const wish = character.soulBondData.wishlist.find(w => w.id === editingId);
             if (wish) wish.text = wishText;
-        } else { // 新增模式
+        } else {
             character.soulBondData.wishlist.unshift({
                 id: `wish_${Date.now()}`,
                 text: wishText,
@@ -23478,10 +23491,21 @@ function setupWishlistApp() {
             });
         }
 
-        scheduleSaveData();
+        // ▼▼▼ 核心修复：使用原子化保存，直接写入数据库 ▼▼▼
+        try {
+            await dataStorage.saveData(`character_${character.id}`, character);
+            showToast('愿望已保存！');
+        } catch (error) {
+            console.error("保存愿望失败:", error);
+            showToast('保存失败，请查看控制台');
+            return; // 保存失败则不更新UI
+        }
+        // ▲▲▲ 修复结束 ▲▲▲
+
         renderWishlist(character.soulBondData.wishlist);
         wishEditorModal.classList.remove('visible');
     });
+// ▲▲▲ 替换结束 ▲▲▲
 
     // 5. 使用事件委托处理清单项的交互（完成、长按删除）
     const wishlistContainer = document.getElementById('bond-wishlist-container');
@@ -30537,14 +30561,14 @@ if (typeof setupMentions === 'function') {
     
 
 
-// --- Replaced postForm submit handler (injected by assistant) ---
+// ▼▼▼ 请用这个完整的代码块，替换掉文件中旧的 postForm.addEventListener('submit', ...) 函数 ▼▼▼
+
 postForm.addEventListener('submit', async (ev) => {
   ev.preventDefault();
 
-  const submitBtn = postForm.querySelector('button[type=\"submit\"]');
+  const submitBtn = postForm.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
 
-  // adapt these IDs to match your form inputs if they differ
   const textEl = document.getElementById('post-text');
   const addImageEl = document.getElementById('add-image');
   const imageDescEl = document.getElementById('image-description');
@@ -30564,12 +30588,17 @@ postForm.addEventListener('submit', async (ev) => {
     if (typeof showToast === 'function') showToast('请输入图片描述');
     return;
   }
+  
+  // --- 核心修改从这里开始 ---
 
-  const id = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  // 1. 获取当前用户信息
+  const myProfile = (typeof loadProfileFromStorage === 'function') ? loadProfileFromStorage() : { id: 'user', name: '我', avatar: null };
+
+  // 2. 创建新的动态对象
   const momentObj = {
-    id,
-    authorId: (localStorage.getItem('myTopId') || 'user'),
-    authorAvatar: (localStorage.getItem('myTopAvatar') || null),
+    id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+    authorId: myProfile.id || 'user',
+    authorAvatar: myProfile.avatar || null, // 使用从 profile 加载的头像
     text,
     imageDesc: addImage ? imageDesc : '',
     timestamp: Date.now(),
@@ -30579,24 +30608,36 @@ postForm.addEventListener('submit', async (ev) => {
   };
 
   try {
-    await addMomentToDB(momentObj);
+    // 3. 确保 AppDB_Moments 数据库和 moments 表已准备好
+    if (!window.AppDB_Moments || !window.AppDB_Moments.moments) {
+        // 如果数据库实例不存在，尝试重新初始化
+        if (typeof Dexie !== 'undefined') {
+            const db = new Dexie('AppDB_Moments');
+            db.version(1).stores({ moments: 'id,timestamp,commentedBy' });
+            window.AppDB_Moments = db;
+        } else {
+            throw new Error('本地数据库引擎(Dexie)未加载');
+        }
+    }
+
+    // 4. 【核心修复】直接使用 Dexie 的 add 方法将新动态写入数据库
+    await window.AppDB_Moments.moments.add(momentObj);
+
+    // 5. 调用 scheduleSaveData() 来保存可能存在的其他全局数据更改 (作为保险措施)
+    if (typeof scheduleSaveData === 'function') {
+        scheduleSaveData();
+    }
+    
+    // --- 核心修改到这里结束 ---
 
     if (typeof showToast === 'function') showToast('发布成功');
     try { if (typeof closePostModal === 'function') closePostModal(); } catch(e){}
 
-    // Force immediate re-render of moments
-    if (typeof renderMoments === 'function') {
-      try { await renderMoments(); } catch(e){ console.warn('renderMoments failed', e); }
-    } else if (typeof window.renderMomentsSafe === 'function') {
-      try { await window.renderMomentsSafe(); } catch(e){ console.warn('renderMomentsSafe failed', e); }
-    } else {
-      // last resort: toggle screen class to force repaint
-      const ms = document.getElementById('moments-screen');
-      if (ms) {
-        ms.classList.remove('active');
-        setTimeout(()=>ms.classList.add('active'), 10);
-      }
+    // 强制刷新动态列表
+    if (typeof window.renderMomentsSafe === 'function') {
+      try { await window.renderMomentsSafe(); } catch(e){ console.warn('renderMomentsSafe failed after post', e); }
     }
+    
   } catch (e) {
     console.error('add moment err', e);
     if (typeof showToast === 'function') showToast('保存失败: ' + (e && e.message ? e.message : String(e)));
@@ -30604,7 +30645,7 @@ postForm.addEventListener('submit', async (ev) => {
     if (submitBtn) submitBtn.disabled = false;
   }
 });
-
+// ▲▲▲ 替换结束 ▲▲▲
 
 
     // 5) 渲染动态列表
