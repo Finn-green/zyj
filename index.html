@@ -34421,6 +34421,7 @@ fileInput.addEventListener('change', async (e)=>{
         <!-- 更新日志内容区域 -->
         <div id="update-content" style="max-height: 40vh; overflow-y: auto; background-color: #f9f9f9; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px;">
             <ul>
+                <li><strong>修复</strong>：无法滑动到第二页的问题(应该已经OK了要是还有bug就告诉我是什么浏览器，什么手机)</li>
                 <li><strong>新增</strong>：查看ai原始返回内容的功能，要是发现角色只发了表情包，就长按聊天界面打开查看ai返回的内容，大概率是掉格式了，手动修改一下，要是一直有掉格式的问题，用括号大法鞭打一下ai！</li>
             </ul>
         </div>
@@ -34522,7 +34523,7 @@ fileInput.addEventListener('change', async (e)=>{
         // ==========================================================
         // == 核心配置：每次更新时，修改这里的版本号即可让弹窗重新出现 ==
         // ==========================================================
-        const UPDATE_VERSION = '1.0.6'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
+        const UPDATE_VERSION = '1.0.7'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
         
         const STORAGE_KEY = `updatePopupDismissed_v${UPDATE_VERSION}`;
 
