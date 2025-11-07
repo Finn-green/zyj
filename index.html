@@ -17932,8 +17932,9 @@ const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role 
 // ===============================================================
 // START: 新增的中央指令处理器
 // ===============================================================
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 processAiCommands 函数 ▼▼▼
 async function processAiCommands(fullResponse, chat) {
-    if (!fullResponse || !chat) return "";
+    if (!fullResponse || !chat) return { cleanedResponse: "", momentsModified: false };
 
     let momentsWereModified = false;
 
@@ -18015,55 +18016,32 @@ async function processAiCommands(fullResponse, chat) {
         const { regex, handler } = commandProcessors[key];
         const matches = Array.from(fullResponse.matchAll(regex));
         for (const match of matches) {
-            await handler(...match); // 使用 await 确保异步操作完成
+            await handler(...match);
         }
-        fullResponse = fullResponse.replace(regex, ''); // 从文本中移除已处理的指令
+        fullResponse = fullResponse.replace(regex, '');
+    }
+
+    // 如果动态被修改过，可以考虑在这里也刷新一次，或者完全依赖调用方
+    if (momentsWereModified) {
+        if (typeof renderMoments === 'function') { try { await renderMoments(); } catch (e) {} }
+        else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
     }
     
-    // 处理“新回忆”指令
-        const memoryRegex = /\[new-memory:({.*?})\]/g;
-        let memoryMatch;
-        while ((memoryMatch = memoryRegex.exec(fullResponse)) !== null) {
-            try {
-                const memoryData = JSON.parse(memoryMatch[1]);
-                await saveMemory(chat.id, memoryData);
-                const character = db.characters.find(c => c.id === chat.id);
-                if (character && typeof showToast === 'function') {
-                    showToast(`[ ${character.remarkName} 悄悄写下了一段回忆... ]`);
-                }
-            } catch (e) {
-                console.error("解析或保存AI回忆失败:", e, memoryMatch[1]);
-            }
-        }
-        fullResponse = fullResponse.replace(memoryRegex, '');
-        let momentsWereAdded = false;
-
-    // 如果动态被修改过，刷新动态页面
-    if (momentsWereModified) {
-        if (typeof renderMoments === 'function') { try { await renderMoments(); } catch (e) {} }
-        else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
-    }
-
-    // ...
-    // (省略其他指令的处理)
-
-    // 如果动态被修改过，刷新动态页面
-    if (momentsWereModified) {
-        if (typeof renderMoments === 'function') { try { await renderMoments(); } catch (e) {} }
-        else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
-    }
-
-    return fullResponse.trim(); // 返回清理干净的、只剩下聊天内容的文本
+    // 【核心修改】返回一个包含清理后文本和修改标记的对象
+    return { cleanedResponse: fullResponse.trim(), momentsModified: momentsWereModified };
 }
+// ▲▲▲ 替换结束 ▲▲▲
 // ===============================================================
 // END: 新增的中央指令处理器
 // ===============================================================
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 processStream 函数 ▼▼▼
 async function processStream(response, chat, apiType) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullResponse = "";
     let accumulatedChunk = "";
     let callActionReceived = false;
+    let momentsWereAdded = false; // 【核心修复①】在这里声明变量
 
     for (;;) {
         const {
@@ -18075,9 +18053,8 @@ async function processStream(response, chat, apiType) {
         accumulatedChunk += decoder.decode(value, {
             stream: true
         });
-        // Process each complete SSE message (ending in \n\n)
         const parts = accumulatedChunk.split("\n\n");
-        accumulatedChunk = parts.pop(); // Keep any incomplete part for the next chunk
+        accumulatedChunk = parts.pop(); 
 
         for (const part of parts) {
             if (part.startsWith("data: ")) {
@@ -18088,10 +18065,8 @@ async function processStream(response, chat, apiType) {
                     const jsonData = JSON.parse(data);
                     let textChunk = "";
                     if (apiType === "gemini") {
-                        // --- 修正开始：将 ?. 语法改为兼容性写法 ---
                         textChunk = (jsonData.candidates && jsonData.candidates[0] && jsonData.candidates[0].content && jsonData.candidates[0].content.parts && jsonData.candidates[0].content.parts[0] && jsonData.candidates[0].content.parts[0].text) || "";
-                    } else { // Handles OpenAI, DeepSeek, Claude, NewAPI
-                        // --- 修正开始：将 ?. 语法改为兼容性写法 ---
+                    } else { 
                         textChunk = (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) || "";
                     }
                     fullResponse += textChunk;
@@ -18103,125 +18078,20 @@ async function processStream(response, chat, apiType) {
     }
 
     if (fullResponse) {
-        console.log("【调试信息】AI完整原始回复:", fullResponse); //  <-- 在这里添加这一行代码
-        // ▼▼▼ 在这里添加新的解析逻辑 ▼▼▼
+        console.log("【调试信息】AI完整原始回复:", fullResponse);
+        
         let contentToProcess = fullResponse;
         const responseMatch = fullResponse.match(/<ai_response>([\s\S]*)<\/ai_response>/);
         if (responseMatch && responseMatch[1]) {
             contentToProcess = responseMatch[1].trim();
         }
-        // ▲▲▲ 添加结束 ▲▲▲
 
-        // --- 新增：在这里调用中央指令处理器 ---
-        // 修改：使用 contentToProcess 而不是 fullResponse
-        contentToProcess = await processAiCommands(contentToProcess, chat); 
-        // --- 新增结束 ---
-    	// ▼▼▼ 在这里添加新的代码块 ▼▼▼
-if (fullResponse.includes('[accept-bond]')) {
-            const character = db.characters.find(c => c.id === currentChatId);
-            if (character) {
-                // 找到最后一条待处理的邀请消息并更新它
-                const pendingRequest = character.history.findLast(m => m.bondRequestData && m.bondRequestData.status === 'pending');
-                if (pendingRequest) {
-                    pendingRequest.bondRequestData.status = 'accepted';
-                }
-                
-                // 解绑所有其他AI，然后绑定当前AI
-                db.characters.forEach(c => { c.isSoulBound = false; c.soulBondStatus = 'none'; });
-                character.isSoulBound = true;
-                character.soulBondStatus = 'active';
-                
-                // 创建一条用户可见的系统通知
-                const displayMsg = { id: `msg_bond_disp_${Date.now()}`, role: 'system', content: `[system-display:${character.remarkName} 同意了你的心动绑定请求！现在你们可以一起体验专属功能了。]`, parts: [], timestamp: Date.now() };
-                // 创建一条让AI说点什么的上下文指令
-                const contextMsg = { id: `msg_bond_ctx_${Date.now()}`, role: 'user', content: `[system: 你刚刚同意了绑定请求。请说一句符合人设的、表达喜悦或确认关系的话。]`, parts: [{ type: 'text', text: `[system: 你刚刚同意了绑定请求。请说一句符合人设的、表达喜悦或确认关系的话。]` }], timestamp: Date.now() };
-                
-                addMessageToChat(character,displayMsg, contextMsg);
-                renderMessages(false, true);
-                scheduleSaveData();
-                
-                // 刷新UI并提示用户
-                renderMessages(false, true);
-                showToast('绑定成功！');
-                getAiReply(); // 触发AI说确认关系的话
-                hideTypingIndicator();
-                return; // 结束处理
-            }
-        }
-        if (fullResponse.includes('[decline-bond]')) {
-            const character = db.characters.find(c => c.id === currentChatId);
-            if (character) {
-                const pendingRequest = character.history.findLast(m => m.bondRequestData && m.bondRequestData.status === 'pending');
-                if (pendingRequest) {
-                    pendingRequest.bondRequestData.status = 'declined';
-                }
-                
-                character.soulBondStatus = 'none';
-                
-                const displayMsg = { id: `msg_bond_disp_${Date.now()}`, role: 'system', content: `[system-display:${character.remarkName} 拒绝了你的绑定请求。]`, parts: [], timestamp: Date.now() };
-                const contextMsg = { id: `msg_bond_ctx_${Date.now()}`, role: 'user', content: `[system: 你刚刚拒绝了绑定请求。请说一句符合人设的、委婉的拒绝理由。]`, parts: [{ type: 'text', text: `[system: 你刚刚拒绝了绑定请求。请说一句符合人设的、委婉的拒绝理由。]` }], timestamp: Date.now() };
-
-                addMessageToChat(character,displayMsg, contextMsg);
-                renderMessages(false, true);
-                scheduleSaveData();
-
-                renderMessages(false, true);
-                showToast('对方拒绝了你的邀请');
-                getAiReply(); // 触发AI说拒绝理由
-                hideTypingIndicator();
-                return; // 结束处理
-            }
-        }
-        // ▲▲▲ 修改结束 ▲▲▲
-        // ▼▼▼ 在这里添加新的代码块 ▼▼▼
-        if (fullResponse.includes('[request-bond]')) {
-            const character = db.characters.find(c => c.id === currentChatId);
-            if (character) {
-                // 1. 更新AI状态为“等待我回应”
-                character.soulBondStatus = 'pending_by_ai';
-
-                // 2. 创建一个代表AI邀请的卡片消息
-                const bondRequestMessage = {
-                    id: `msg_bond_req_card_${Date.now()}`,
-                    role: 'assistant', // 这条消息是AI发出的
-                    content: `[${character.realName}向你发起了心动绑定邀请]`,
-                    parts: [],
-                    timestamp: Date.now(),
-                    bondRequestData: { status: 'pending' } // 这个属性将用于渲染卡片
-                };
-                addMessageToChat(character,bondRequestMessage);
-                
-                scheduleSaveData();
-                
-                // 3. 刷新UI以显示卡片
-                renderMessages(false, true);
-                showToast(`${character.remarkName} 向你发起了心动绑定！`);
-            }
-            // 4. 结束函数，不再处理后续内容
-            hideTypingIndicator();
-            return;
-        }
-        // ▲▲▲ 添加结束 ▲▲▲
-
-        // --- 新增：拦截AI支付指令 ---
-        if (fullResponse.includes('[accept-payment]')) {
-            const lastRequest = chat.history.findLast(m => m.paymentRequestData?.status === 'pending');
-            if (lastRequest) {
-                handleAiPaymentDecision(lastRequest.id, 'paid');
-            }
-            hideTypingIndicator(); // 支付完成后立即隐藏“正在输入”
-            return; // 拦截成功，终止后续渲染
-        } else if (fullResponse.includes('[decline-payment]')) {
-            const lastRequest = chat.history.findLast(m => m.paymentRequestData?.status === 'pending');
-            if (lastRequest) {
-                handleAiPaymentDecision(lastRequest.id, 'declined');
-            }
-            hideTypingIndicator(); // 拒绝后立即隐藏“正在输入”
-            return; // 拦截成功，终止后续渲染
-        }
-
-const messageRegex = /(\[[\s\S]*?\]|<div class="ai-theater"[\s\S]*?<\/div>)/g;
-const recallRegex = /\[send_and_recall:({.*?})\]/g;
+        // 【核心修复②】接收 processAiCommands 返回的对象
+        const processResult = await processAiCommands(contentToProcess, chat);
+        contentToProcess = processResult.cleanedResponse;
+        momentsWereAdded = processResult.momentsModified; // 将返回的标记赋值给我们的变量
+        
+        const recallRegex = /\[send_and_recall:({.*?})\]/g;
         const recallMatch = recallRegex.exec(contentToProcess);
         if (recallMatch) {
             try {
@@ -18232,76 +18102,33 @@ const recallRegex = /\[send_and_recall:({.*?})\]/g;
                     content: recallData.message,
                     parts: [{ type: 'text', text: recallData.message }],
                     timestamp: Date.now(),
-                    // 添加一个临时标记，用于后续查找
                     isRecalling: true 
                 };
-                // ... 在 processStream() 函数内部，就在 renderChatList(); 之前 ...
-
-// --- 新增：处理特殊物品效果倒计时 ---
-if (currentChatType === 'private') {
-    const character = db.characters.find(c => c.id === currentChatId);
-    if (character && character.activeEffects && character.activeEffects.length > 0) {
-        
-        // 倒序遍历以安全地删除元素
-        for (let i = character.activeEffects.length - 1; i >= 0; i--) {
-            const effect = character.activeEffects[i];
-            
-            effect.duration--; // 每次回复，持续时间减1
-
-            if (effect.duration <= 0) {
-                // 效果结束，移除它
-                const endedEffect = character.activeEffects.splice(i, 1)[0];
-                
-                if (endedEffect.isSideEffect) {
-                    showToast(`${character.remarkName} 的副作用已结束。`);
-                } else {
-                    showToast(`${character.remarkName} 的特殊效果已结束。`);
-                    // 检查并激活副作用
-                    if (endedEffect.sideEffect) {
-                        const sideEffect = { ...endedEffect.sideEffect, isSideEffect: true };
-                        character.activeEffects.push(sideEffect);
-                        showToast(`副作用“${sideEffect.type === 'stutter' ? '口吃' : '未知'}”已激活！`);
-                    }
-                }
-            }
-        }
-    }
-}
-// --- 倒计时逻辑结束 ---
-
-// ... 后面紧跟着的就是 renderChatList();
-                // 1. 正常发送并显示消息
                 addMessageToChat(chat,messageToSend);
                 addMessageBubble(messageToSend);
                 scheduleSaveData();
                 renderChatList();
 
-                // 2. 等待片刻，模拟“反应过来”的过程
                 setTimeout(async () => {
                     const msgIndex = chat.history.findIndex(m => m.id === messageToSend.id);
                     if (msgIndex > -1) {
-                        // 3. 标记为已撤回，并保存原始内容
                         chat.history[msgIndex].recalled = true;
                         chat.history[msgIndex].recalledBy = 'ai';
                         chat.history[msgIndex].originalContent = chat.history[msgIndex].content;
-                        // 清理临时标记
                         delete chat.history[msgIndex].isRecalling;
                         
                         scheduleSaveData();
-                        // 4. 重新渲染聊天界面，气泡会自动变成占位符
                         renderMessages(false, true); 
                     }
-                }, 1500); // 延迟1.5秒后撤回
+                }, 1500);
 
             } catch (e) {
                 console.error("解析AI撤回指令失败:", e);
             }
-            // 处理完撤回指令后，无论成功与否都结束函数，不再执行后续逻辑
             hideTypingIndicator();
             return;
         }
-        // --- AI撤回逻辑结束 ---
-        // 如果没有任何渲染器匹配，则执行原来的逻辑
+        
         if (fullResponse.includes('[call-accept]')) {
             callActionReceived = true;
             startActiveCall();
@@ -18333,101 +18160,87 @@ if (currentChatType === 'private') {
             }
         }
         
-
-
-       // ▼▼▼ 核心修改点 ▼▼▼
-        // 此处调用时，传入了第二个参数 chat
+        const memoryRegex = /\[new-memory:({.*?})\]/g;
+        let memoryMatch;
+        while ((memoryMatch = memoryRegex.exec(fullResponse)) !== null) {
+            try {
+                const memoryData = JSON.parse(memoryMatch[1]);
+                await saveMemory(chat.id, memoryData);
+                const character = db.characters.find(c => c.id === chat.id);
+                if (character && typeof showToast === 'function') {
+                    showToast(`[ ${character.remarkName} 悄悄写下了一段回忆... ]`);
+                }
+            } catch (e) {
+                console.error("解析或保存AI回忆失败:", e, memoryMatch[1]);
+            }
+        }
+        fullResponse = fullResponse.replace(memoryRegex, '');
+        
         const messages = getMixedContent(contentToProcess, chat).filter(item => item.content.trim() !== '');
-        // ▲▲▲ 修改结束 ▲▲▲
-
+        
         let firstMessageProcessed = false; 
-
         for (const item of messages) {
             const delay = firstMessageProcessed ? (600 + Math.random() * 600) : (500 + Math.random() * 500);
             await new Promise(resolve => setTimeout(resolve, delay));
             firstMessageProcessed = true;
 
+            const message = {
+                id: `msg_${Date.now()}_${Math.random()}`,
+                role: 'assistant',
+                content: item.content.trim(),
+                parts: [{type: item.type, text: item.content.trim()}],
+                timestamp: Date.now(),
+                rawAiResponse: fullResponse
+            };
+
             if (currentChatType === 'private') {
-                const character = chat;
-                const message = {
-                    id: `msg_${Date.now()}_${Math.random()}`,
-                    role: 'assistant',
-                    content: item.content.trim(),
-                    parts: [{type: item.type, text: item.content.trim()}],
-                    timestamp: Date.now(),
-                    rawAiResponse: fullResponse // 为每一条消息都附加原始回复
-                };
-
-                const receivedTransferRegex = new RegExp(`\\[${character.realName}的转账：.*?元；备注：.*?\\]`);
-                const giftRegex = new RegExp(`\\[${character.realName}送来的礼物：.*?\\]`);
-                if (receivedTransferRegex.test(message.content)) { message.transferStatus = 'pending'; }
-                else if (giftRegex.test(message.content)) { message.giftStatus = 'sent'; }
-
+                const receivedTransferRegex = new RegExp(`\\[${chat.realName}的转账：.*?元；备注：.*?\\]`);
+                const giftRegex = new RegExp(`\\[${chat.realName}送来的礼物：.*?\\]`);
+                if (receivedTransferRegex.test(message.content)) message.transferStatus = 'pending';
+                else if (giftRegex.test(message.content)) message.giftStatus = 'sent';
                 addMessageToChat(chat,message);
                 addMessageBubble(message);
-await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
-}hideTypingIndicator();
-
-            if (currentChatType === 'group') {
-                const group = chat;
-                let r = /\[(.*?)((?:的消息|的语音|发送的表情包|发来的照片\/视频))：/;
-                const nameMatch = item.content.match(r);
+            } else { // group
+                const nameMatch = item.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)：/);
                 if (nameMatch || item.char) {
                     const senderName = item.char || (nameMatch[1]);
-                    const sender = group.members.find(m => (m.realName === senderName || m.groupNickname === senderName));
+                    const sender = chat.members.find(m => (m.realName === senderName || m.groupNickname === senderName));
                     if (sender) {
-                        const message = {
-                            id: `msg_${Date.now()}_${Math.random()}`,
-                            role: 'assistant',
-                            content: item.content.trim(),
-                            parts: [{type: item.type, text: item.content.trim()}],
-                            timestamp: Date.now(),
-                            senderId: sender.id,
-                            rawAiResponse: fullResponse // 为每一条消息都附加原始回复
-                        };
-                        addMessageToChat(group,message);
+                        message.senderId = sender.id;
+                        addMessageToChat(chat,message);
                         addMessageBubble(message);
                     }
                 }
             }
         }
 
-        // ---- 核心修改：在这里立刻隐藏“正在输入”提示 ----
         hideTypingIndicator();
-        // ----------------------------------------
 
-        // 后续的后台任务
         if (currentChatType === 'private') {
-            const character = chat;
-            character.messageCountSinceLastDiary = (character.messageCountSinceLastDiary || 0) + 1;
-            if (character.messageCountSinceLastDiary >= 5 && Math.random() < 0.9) {
+            chat.messageCountSinceLastDiary = (chat.messageCountSinceLastDiary || 0) + 1;
+            if (chat.messageCountSinceLastDiary >= 5 && Math.random() < 0.9) {
                 generateDiaryEntry();
             }
         }
- // ▼▼▼ 在这里粘贴下面的新代码 ▼▼▼
-        // --- 新增：自动修剪聊天记录，防止无限增长 ---
+
         if (chat.history.length > MAX_HISTORY_PER_CHAT) {
-            // 只保留最新的 MAX_HISTORY_PER_CHAT 条消息
             chat.history = chat.history.slice(-MAX_HISTORY_PER_CHAT);
             console.log(`已自动修剪 "${chat.name || chat.remarkName}" 的聊天记录以保持性能。`);
         }
-        // --- 新增结束 ---
-        // ▲▲▲ 粘贴到这里结束 ▲▲▲
         if (chat.povCache) {
             chat.povCache = null;
         }
+
         scheduleSaveData();
         renderChatList();
+
+        // 【核心修复③】在这里使用我们从“小房间”拿出来的笔记
         if (momentsWereAdded) {
             if (typeof renderMoments === 'function') { try { await renderMoments(); } catch (e) {} }
             else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
         }
-        // if (currentChatType === 'private' && Math.random() < 0.85) {
-//     await generateBackgroundChat(chat);
-//     scheduleSaveData();
-// }
+
     } else {
-        // 如果AI的回复是空的，也要隐藏提示
         hideTypingIndicator();
     }
     
@@ -18437,6 +18250,7 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
         hideTypingIndicator();
     }
 }
+// ▲▲▲ 替换结束 ▲▲▲
         // --- Other Sub-systems Setup (Stickers, Voice, etc.) ---
         function setupImageRecognition() {
             imageRecognitionBtn.addEventListener('click', () => {
