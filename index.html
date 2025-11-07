@@ -14909,13 +14909,13 @@ function openAiResponseViewer(messageId) {
 /**
  * Saves the edited AI raw response and refreshes the chat view.
  */
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 saveAndRefreshAiResponse 函数 ▼▼▼
 async function saveAndRefreshAiResponse() {
     const modal = document.getElementById('ai-response-viewer-modal');
     const textarea = document.getElementById('ai-raw-content-textarea');
     const messageId = document.getElementById('editing-ai-message-id').value;
     const newRawContent = textarea.value.trim();
 
-    // 如果没有消息ID或内容，说明是空弹窗，直接关闭
     if (!messageId || !newRawContent) {
         modal.classList.remove('visible');
         return;
@@ -14924,13 +14924,9 @@ async function saveAndRefreshAiResponse() {
     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
     if (!chat) return;
 
-    // --- 核心改造：同步救生艇 + 异步货轮 ---
-
-    // 1. 找到被编辑消息（AI回复的第一条）的索引
     const originalMessageIndex = chat.history.findIndex(m => m.id === messageId);
     if (originalMessageIndex === -1) return;
 
-    // 2. 找到这轮AI回复的所有消息，并记录它们的ID
     let endIndex = originalMessageIndex;
     for (let i = originalMessageIndex + 1; i < chat.history.length; i++) {
         if (chat.history[i].role === 'user') break;
@@ -14938,13 +14934,32 @@ async function saveAndRefreshAiResponse() {
     }
     const messagesToDeleteCount = (endIndex - originalMessageIndex) + 1;
 
-    // 3. 重新处理被用户编辑过的原始文本
     let contentToProcess = newRawContent;
     const responseMatch = newRawContent.match(/<ai_response>([\s\S]*)<\/ai_response>/);
     if (responseMatch && responseMatch[1]) {
         contentToProcess = responseMatch[1].trim();
     }
-    const processedContent = await processAiCommands(contentToProcess, chat);
+    
+    // 【核心修复】在调用时，传入第三个参数 false，禁用指令执行
+    const processResult = await processAiCommands(contentToProcess, chat, false);
+    const processedContent = processResult.cleanedResponse;
+
+    // 如果处理后内容为空，说明原始回复只包含指令，直接删除旧消息即可
+    if (!processedContent) {
+        try {
+            chat.history.splice(originalMessageIndex, messagesToDeleteCount);
+            await dataStorage.saveChatMessages(currentChatId, currentChatType, chat.history);
+            modal.classList.remove('visible');
+            showToast('内容已更新（指令已被移除）');
+            renderMessages(false, true);
+        } catch (error) {
+            showToast('更新失败，请刷新重试');
+            console.error("保存AI回复编辑失败:", error);
+        }
+        return; // 提前结束
+    }
+    
+    // 后续逻辑保持不变...
     const newMessagesFromAI = getMixedContent(processedContent, chat).filter(item => item.content.trim() !== '');
 
     const messagesToAdd = [];
@@ -14955,7 +14970,7 @@ async function saveAndRefreshAiResponse() {
             content: item.content.trim(),
             parts: [{type: item.type, text: item.content.trim()}],
             timestamp: Date.now(),
-            rawAiResponse: newRawContent // 保存编辑后的原始文本
+            rawAiResponse: newRawContent
         };
         if(currentChatType === 'group') {
              const nameMatch = item.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)：/);
@@ -14968,13 +14983,9 @@ async function saveAndRefreshAiResponse() {
     });
 
     try {
-        // 4. 更新内存
         chat.history.splice(originalMessageIndex, messagesToDeleteCount, ...messagesToAdd);
-        
-        // 5. 异步“货轮”：直接调用我们最可靠的聊天记录保存函数
         await dataStorage.saveChatMessages(currentChatId, currentChatType, chat.history);
         
-        // 6. 更新UI
         modal.classList.remove('visible');
         showToast('内容已保存并更新');
         renderMessages(false, true);
@@ -14982,10 +14993,9 @@ async function saveAndRefreshAiResponse() {
     } catch (error) {
         showToast('编辑保存失败，请刷新重试');
         console.error("保存AI回复编辑失败:", error);
-        // 可以在这里添加回滚内存的逻辑，但通常让用户刷新是更安全的选择
     }
 }
-
+// ▲▲▲ 替换结束 ▲▲▲
 /**
  * Initializes event listeners for the AI Response Viewer modal.
  */
@@ -17933,12 +17943,18 @@ const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role 
 // START: 新增的中央指令处理器
 // ===============================================================
 // ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 processAiCommands 函数 ▼▼▼
-async function processAiCommands(fullResponse, chat) {
+/**
+ * [V2.1 | 安全模式修复版] 处理AI指令，可选择是否执行有副作用的命令。
+ * @param {string} fullResponse - AI返回的原始文本。
+ * @param {object} chat - 当前聊天对象。
+ * @param {boolean} [executeCommands=true] - 是否执行指令（如创建动态）。设为 false 则只移除指令文本。
+ * @returns {Promise<object>} - 返回包含清理后文本和修改标记的对象。
+ */
+async function processAiCommands(fullResponse, chat, executeCommands = true) {
     if (!fullResponse || !chat) return { cleanedResponse: "", momentsModified: false };
 
     let momentsWereModified = false;
 
-    // 动态相关指令的处理器
     const commandProcessors = {
         '发布动态': {
             regex: /\[(.*?)\s*发布动态\s*[:：]\s*({.*?})\]/g,
@@ -17964,6 +17980,7 @@ async function processAiCommands(fullResponse, chat) {
                 } catch (e) { console.error("解析或执行发布动态指令失败:", e); }
             }
         },
+        // ... 其他指令处理器 (点赞, 评论等) 保持不变 ...
         '点赞动态': {
             regex: /\[(.*?)\s*点赞动态\s*[:：]\s*({.*?})\]/g,
             handler: async (match, authorRealName, jsonData) => {
@@ -18016,18 +18033,15 @@ async function processAiCommands(fullResponse, chat) {
         const { regex, handler } = commandProcessors[key];
         const matches = Array.from(fullResponse.matchAll(regex));
         for (const match of matches) {
-            await handler(...match);
+            // 【核心修复】只有在允许执行时，才调用 handler
+            if (executeCommands) {
+                await handler(...match);
+            }
         }
+        // 无论是否执行，都必须将指令文本从回复中移除
         fullResponse = fullResponse.replace(regex, '');
     }
 
-    // 如果动态被修改过，可以考虑在这里也刷新一次，或者完全依赖调用方
-    if (momentsWereModified) {
-        if (typeof renderMoments === 'function') { try { await renderMoments(); } catch (e) {} }
-        else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
-    }
-    
-    // 【核心修改】返回一个包含清理后文本和修改标记的对象
     return { cleanedResponse: fullResponse.trim(), momentsModified: momentsWereModified };
 }
 // ▲▲▲ 替换结束 ▲▲▲
