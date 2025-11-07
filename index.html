@@ -3443,6 +3443,26 @@ html, body {
 }
 
 /* ▲▲▲ 添加结束 ▲▲▲ */
+/* ▼▼▼ 在 <style> 标签末尾添加或替换旧的修复代码 ▼▼▼ */
+
+/* --- 修复：主页滑动过头导致白屏的最终解决方案 --- */
+#home-container {
+    /*
+     * 1. 恢复/确保 overflow-x: hidden.
+     *    这至关重要，它将“画卷”(.home-page-wrapper)超出屏幕的部分裁剪掉，
+     *    防止出现白边和无限滚动。这是解决白屏问题的关键。
+     */
+    overflow-x: hidden !important;
+
+    /*
+     * 2. 核心修复：禁用浏览器在该元素上的默认横向滚动/滑动行为。
+     *    这可以防止用户的滑动操作与我们用JavaScript实现的页面切换逻辑发生冲突，
+     *    从而彻底解决了“滑过头”的问题。
+     */
+    overscroll-behavior-x: none !important;
+}
+
+/* --- ▲▲▲ 添加/替换结束 ▲▲▲ */
     </style>
     <!-- === moments 固定在 phone-screen 内的修复样式 (自动插入补丁) === -->
 <style>
