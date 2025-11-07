@@ -8619,39 +8619,59 @@ function createContextMenu(items, x, y) {
 // ===============================================================
 
 // --- 交易记录 ---
-function addTransaction(type, amount, description) {
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 addTransaction 函数 ▼▼▼
+async function addTransaction(type, amount, description) {
     if (!db.wallet) return;
     
-    // 1. 更新余额
-    const numericAmount = parseFloat(amount);
-    if (type === 'income') {
-        db.wallet.balance += numericAmount;
-    } else if (type === 'expense') {
-        db.wallet.balance -= numericAmount;
-    }
-    db.wallet.balance = parseFloat(db.wallet.balance.toFixed(2)); // 避免精度问题
+    // --- “救生艇”改造开始 ---
+    const bufferKey = 'pendingAction_saveWalletSettings';
 
-    // 2. 添加交易记录
-    const transaction = {
-        id: `tx_${Date.now()}`,
-        type, // 'income' or 'expense'
-        amount: numericAmount,
-        description,
-        timestamp: Date.now()
-    };
-    db.wallet.transactions.unshift(transaction); // unshift使最新记录在最前
+    try {
+        // 1. 更新内存
+        const numericAmount = parseFloat(amount);
+        if (type === 'income') {
+            db.wallet.balance += numericAmount;
+        } else if (type === 'expense') {
+            db.wallet.balance -= numericAmount;
+        }
+        db.wallet.balance = parseFloat(db.wallet.balance.toFixed(2));
 
-    // 3. 限制交易记录数量，防止无限增长
-    if (db.wallet.transactions.length > 200) {
-        db.wallet.transactions.pop();
+        const transaction = {
+            id: `tx_${Date.now()}`,
+            type,
+            amount: numericAmount,
+            description,
+            timestamp: Date.now()
+        };
+        db.wallet.transactions.unshift(transaction);
+
+        if (db.wallet.transactions.length > 200) {
+            db.wallet.transactions.pop();
+        }
+        
+        // 2. 同步“救生艇”
+        localStorage.setItem(bufferKey, JSON.stringify(db.wallet));
+
+        // 3. 异步“货轮”
+        let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+        baseData.wallet = db.wallet;
+        await dataStorage.saveData('章鱼喷墨机', baseData);
+
+        // 4. 清理“救生艇”
+        localStorage.removeItem(bufferKey);
+
+        // 5. 更新UI
+        const balanceDisplay = document.getElementById('wallet-balance-display');
+        if (balanceDisplay) {
+            balanceDisplay.textContent = db.wallet.balance.toFixed(2);
+        }
+    } catch (error) {
+        showToast('交易记录保存失败');
+        console.error("保存交易记录失败:", error);
     }
-    
-    // 4. 更新UI显示
-    const balanceDisplay = document.getElementById('wallet-balance-display');
-    if (balanceDisplay) {
-        balanceDisplay.textContent = db.wallet.balance.toFixed(2);
-    }
+    // --- “救生艇”改造结束 ---
 }
+// ▲▲▲ 替换结束 ▲▲▲
 
 // --- 支付流程处理 (事件监听器修复版) ---
 function handlePayment(amount, description) {
@@ -10229,7 +10249,7 @@ function renderPaymentConfirmationScreen(items) {
                         action: async () => {
                             if (confirm('确定要删除这条付款记录吗？此操作不可撤销。')) {
                                 
-                                // --- 核心改造：同步救生艇 + 异步货轮 ---
+                                // --- “救生艇”改造开始 ---
                                 const bufferKey = `pendingAction_deletePaymentHistory_${transactionId}`;
 
                                 try {
@@ -10258,6 +10278,7 @@ function renderPaymentConfirmationScreen(items) {
                                     showToast('删除失败，请刷新重试');
                                     console.error("删除付款记录失败:", error);
                                 }
+                                // --- “救生艇”改造结束 ---
                             }
                         }
                     }],
@@ -10628,11 +10649,12 @@ if (!db.mallData.customProducts) {
 // ▲▲▲ 替换结束 ▲▲▲
     
     // --- 新的支付确认页面事件绑定 ---
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 'confirm-final-payment-btn' 事件监听器 ▼▼▼
     document.getElementById('confirm-final-payment-btn').addEventListener('click', async () => {
         const isPayForMe = document.querySelector('.method-item#pay-for-me-btn').classList.contains('selected');
 
         if (isPayForMe) {
-            // 打开代付好友选择列表
+            // 代付逻辑 (保持不变)
             const listEl = document.getElementById('pay-for-me-selection-list');
             listEl.innerHTML = '';
             db.characters.forEach(char => {
@@ -10645,57 +10667,94 @@ if (!db.mallData.customProducts) {
             });
             document.getElementById('pay-for-me-select-modal').classList.add('visible');
         } else {
-            // 执行自己支付的逻辑
+            // --- 自己支付的逻辑 (核心改造区域) ---
             try {
-                await handlePayment(window.currentPurchaseTotal, `购物消费`);
-                // --- 核心新增：支付成功后，为每个商品创建送货消息 ---
-const recipientId = document.getElementById('payment-recipient-select').value;
-const deliveryMinutes = parseInt(document.getElementById('payment-delivery-duration').value, 10);
-const recipient = db.characters.find(c => c.id === recipientId);
+                // 1. 执行支付，这部分是可靠的
+                await handlePayment(window.currentPurchaseTotal, `购物消费 (${window.currentPurchaseItems.length}件)`);
 
-if (recipient) {
-    window.currentPurchaseItems.forEach(item => {
-        const deliveryMessage = {
-            id: `msg_delivery_${Date.now()}_${item.id}`,
-            role: 'user',
-            content: `[我为${recipient.remarkName}购买了${item.name}]`,
-            parts: [],
-            timestamp: Date.now(),
-            senderId: 'user_me',
-            deliveryData: {
-                productId: item.id,
-                productName: item.name,
-                productImage: item.imageUrl,
-                price: item.price,
-                quantity: 1, // 购物车商品默认为1
-                style: '默认款式',
-                eta: Date.now() + deliveryMinutes * 60 * 1000,
-                delivered: false
-            }
-        };
-        addMessageToChat(recipient,deliveryMessage);
-    });
-}
-// --- 新增结束 ---
-                // 支付成功，将商品添加到物流
-                addItemsToLogistics(window.currentPurchaseItems, null); // null 表示是用户自己买的
+                // 2. 支付成功后，开始处理后续所有数据的“救生艇”保存
+                const transactionId = `cart_purchase_${Date.now()}`;
+                const logisticsBufferKey = `pendingAction_addLogistics_${transactionId}`;
+                const paymentHistoryBufferKey = `pendingAction_addPaymentHistory_${transactionId}`;
+                const cartUpdateBufferKey = `pendingAction_updateCart`;
+
+                // 3. 准备所有需要更新的数据
+                const recipientId = document.getElementById('payment-recipient-select').value;
+                const deliveryMinutes = parseInt(document.getElementById('payment-delivery-duration').value, 10);
+                const recipient = db.characters.find(c => c.id === recipientId);
+
+                // a. 创建新的物流项目
+                const newLogisticsItems = window.currentPurchaseItems.map(item => ({
+                    orderId: `order_${Date.now()}_${item.id.slice(-4)}`,
+                    productId: item.id,
+                    productName: item.name,
+                    productImage: item.imageUrl,
+                    purchasedByAiId: null,
+                    recipientName: recipient ? recipient.remarkName : '我',
+                    eta: Date.now() + deliveryMinutes * 60 * 1000,
+                    status: '待发货'
+                }));
                 
-                // 添加到商城付款记录
-                if (!db.mallData.paymentHistory) db.mallData.paymentHistory = [];
-                db.mallData.paymentHistory.unshift({
+                // b. 创建新的付款记录
+                const newPaymentRecord = {
                     id: `pay_${Date.now()}`,
                     timestamp: Date.now(),
                     description: `购物车结算 (${window.currentPurchaseItems.length}件)`,
                     total: window.currentPurchaseTotal
-                });
-
-                // 从购物车移除已购商品
+                };
+                
+                // c. 计算更新后的购物车
                 const purchasedIds = new Set(window.currentPurchaseItems.map(item => item.id));
-                db.mallData.cart = db.mallData.cart.filter(item => !purchasedIds.has(item.productId));
+                const updatedCart = db.mallData.cart.filter(item => !purchasedIds.has(item.productId));
+
+
+                // 4. 同步“救生艇”：将所有更改写入 localStorage
+                localStorage.setItem(logisticsBufferKey, JSON.stringify(newLogisticsItems));
+                localStorage.setItem(paymentHistoryBufferKey, JSON.stringify(newPaymentRecord));
+                localStorage.setItem(cartUpdateBufferKey, JSON.stringify(updatedCart));
+
+                // 5. 更新内存
+                if (!db.mallData.logistics) db.mallData.logistics = [];
+                db.mallData.logistics.unshift(...newLogisticsItems);
+                if (!db.mallData.paymentHistory) db.mallData.paymentHistory = [];
+                db.mallData.paymentHistory.unshift(newPaymentRecord);
+                db.mallData.cart = updatedCart;
                 selectedCartItemIds.clear();
 
-                scheduleSaveData();
-                showToast('支付成功！可在“我的物流”中查看');
+                // 6. 异步“货轮”：将包含所有更新的 mallData 保存到主数据库
+                const baseData = await dataStorage.getData('章鱼喷墨机') || {};
+                if (!baseData.mallData) baseData.mallData = {};
+                baseData.mallData.logistics = db.mallData.logistics;
+                baseData.mallData.paymentHistory = db.mallData.paymentHistory;
+                baseData.mallData.cart = db.mallData.cart;
+                await dataStorage.saveData('章鱼喷墨机', baseData);
+
+                // 7. 清理“救生艇”
+                localStorage.removeItem(logisticsBufferKey);
+                localStorage.removeItem(paymentHistoryBufferKey);
+                localStorage.removeItem(cartUpdateBufferKey);
+
+                // 8. 发送送货消息 (这部分逻辑不变)
+                if (recipient) {
+                    window.currentPurchaseItems.forEach(item => {
+                         const deliveryMessage = {
+                            id: `msg_delivery_${Date.now()}_${item.id}`,
+                            role: 'user',
+                            content: `[我为${recipient.remarkName}购买了${item.name}]`,
+                            parts: [],
+                            timestamp: Date.now(),
+                            senderId: 'user_me',
+                            deliveryData: {
+                                productId: item.id, productName: item.name, productImage: item.imageUrl,
+                                eta: Date.now() + deliveryMinutes * 60 * 1000, delivered: false
+                            }
+                        };
+                        addMessageToChat(recipient, deliveryMessage);
+                    });
+                }
+                
+                // 9. 更新UI
+                showToast('支付成功！商品已发货。');
                 switchScreen('mall-cart-screen');
                 renderCart();
 
@@ -10704,6 +10763,7 @@ if (recipient) {
             }
         }
     });
+// ▲▲▲ 替换结束 ▲▲▲
     
     // 支付方式选择
     document.querySelector('.payment-methods').addEventListener('click', (e) => {
@@ -17961,21 +18021,22 @@ async function processAiCommands(fullResponse, chat) {
     }
     
     // 处理“新回忆”指令
-    const memoryRegex = /\[new-memory:({.*?})\]/g;
-    const memoryMatches = Array.from(fullResponse.matchAll(memoryRegex));
-    for (const memoryMatch of memoryMatches) {
-        try {
-            const memoryData = JSON.parse(memoryMatch[1]);
-            await saveMemory(chat.id, memoryData);
-            const character = db.characters.find(c => c.id === chat.id);
-            if (character && typeof showToast === 'function') {
-                showToast(`[ ${character.remarkName} 悄悄写下了一段回忆... ]`);
+        const memoryRegex = /\[new-memory:({.*?})\]/g;
+        let memoryMatch;
+        while ((memoryMatch = memoryRegex.exec(fullResponse)) !== null) {
+            try {
+                const memoryData = JSON.parse(memoryMatch[1]);
+                await saveMemory(chat.id, memoryData);
+                const character = db.characters.find(c => c.id === chat.id);
+                if (character && typeof showToast === 'function') {
+                    showToast(`[ ${character.remarkName} 悄悄写下了一段回忆... ]`);
+                }
+            } catch (e) {
+                console.error("解析或保存AI回忆失败:", e, memoryMatch[1]);
             }
-        } catch (e) {
-            console.error("解析或保存AI回忆失败:", e, memoryMatch[1]);
         }
-    }
-    fullResponse = fullResponse.replace(memoryRegex, '');
+        fullResponse = fullResponse.replace(memoryRegex, '');
+        let momentsWereAdded = false;
 
     // 如果动态被修改过，刷新动态页面
     if (momentsWereModified) {
@@ -18272,22 +18333,7 @@ if (currentChatType === 'private') {
             }
         }
         
-        const memoryRegex = /\[new-memory:({.*?})\]/g;
-        let memoryMatch;
-        while ((memoryMatch = memoryRegex.exec(fullResponse)) !== null) {
-            try {
-                const memoryData = JSON.parse(memoryMatch[1]);
-                await saveMemory(chat.id, memoryData);
-                const character = db.characters.find(c => c.id === chat.id);
-                if (character && typeof showToast === 'function') {
-                    showToast(`[ ${character.remarkName} 悄悄写下了一段回忆... ]`);
-                }
-            } catch (e) {
-                console.error("解析或保存AI回忆失败:", e, memoryMatch[1]);
-            }
-        }
-        fullResponse = fullResponse.replace(memoryRegex, '');
-        let momentsWereAdded = false;
+
 
        // ▼▼▼ 核心修改点 ▼▼▼
         // 此处调用时，传入了第二个参数 chat
@@ -19737,6 +19783,7 @@ async function saveSettingsFromSidebar() {
             currentPage = 1;
             renderMessages(false, true);
         }
+// ▲▲▲ 替换结束 ▲▲▲
         // (请找到文件中的旧 setupApiSettingsApp 函数，并用下面的代码完整替换它)
 
 // (请找到文件中的旧 setupApiSettingsApp 函数，并用下面的代码完整替换它)
@@ -20167,17 +20214,11 @@ async function generateDiaryEntry(isManual = false) {
     }
 }
 
-// 保存日记并处理存储逻辑
-// (请找到文件中的旧 saveDiaryEntry 函数，并用下面的代码完整替换它)
-
-// 保存日记并处理存储逻辑
-// (请找到文件中的旧 saveDiaryEntry 函数，并用下面的代码完整替换它)
-
-// 保存日记并处理存储逻辑
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 saveDiaryEntry 函数 ▼▼▼
 async function saveDiaryEntry(content) {
     const character = db.characters.find(c => c.id === currentChatId);
     if (!character) return;
-    
+
     // 确保 diaries 数组存在
     if (!Array.isArray(character.diaries)) {
         character.diaries = [];
@@ -20190,33 +20231,41 @@ async function saveDiaryEntry(content) {
         isFavorited: false
     };
 
-    character.diaries.push(newDiary);
-    
-    // --- 新版逻辑：当未收藏日记达到第6篇时，清空前5篇 ---
-    
-    // 1. 将日记分为“已收藏”和“未收藏”两组
-    const favoritedDiaries = character.diaries.filter(d => d.isFavorited);
-    let unfavoritedDiaries = character.diaries.filter(d => !d.isFavorited);
+    // --- “救生艇”改造开始 ---
+    const bufferKey = `pendingAction_updateCharacter_${character.id}`; // 使用一个统一的角色数据备份key
 
-    // 2. 检查“未收藏”的日记数量是否正好达到了6篇
-    if (unfavoritedDiaries.length === 6) {
-        // 3. 如果是，则按时间排序以确保新生成的日记在最后
-        unfavoritedDiaries.sort((a, b) => a.timestamp - b.timestamp);
-        
-        // 4. 只保留数组中的最后一个元素（即刚刚新生成的第6篇），从而删除前5篇
-        unfavoritedDiaries = unfavoritedDiaries.slice(-1);
+    try {
+        // 1. 更新内存
+        character.diaries.push(newDiary);
+
+        // 处理自动清理逻辑 (保持不变)
+        const favoritedDiaries = character.diaries.filter(d => d.isFavorited);
+        let unfavoritedDiaries = character.diaries.filter(d => !d.isFavorited);
+        if (unfavoritedDiaries.length === 6) {
+            unfavoritedDiaries.sort((a, b) => a.timestamp - b.timestamp);
+            unfavoritedDiaries = unfavoritedDiaries.slice(-1);
+        }
+        character.diaries = [...favoritedDiaries, ...unfavoritedDiaries];
+        character.messageCountSinceLastDiary = 0;
+
+        // 2. 同步“救生艇”：将更新后的整个角色对象写入 localStorage
+        localStorage.setItem(bufferKey, JSON.stringify(character));
+        console.log(`同步备份了角色(含新日记)到 localStorage: ${character.remarkName}`);
+
+        // 3. 异步“货轮”：将角色对象写入主数据库
+        await dataStorage.saveData(`character_${character.id}`, character);
+
+        // 4. 清理“救生艇”
+        localStorage.removeItem(bufferKey);
+        console.log(`主存储成功，已清理 localStorage 的角色备份`);
+
+    } catch (error) {
+        showToast('日记保存失败，请刷新重试');
+        console.error("保存AI日记失败:", error);
     }
-
-    // 5. 将“已收藏”和“处理后保留的未收藏”合并，形成最终的日记列表
-    character.diaries = [...favoritedDiaries, ...unfavoritedDiaries];
-
-    // --- 新版逻辑结束 ---
-    
-    // 重置消息计数
-    character.messageCountSinceLastDiary = 0;
-    
-    scheduleSaveData();
+    // --- “救生艇”改造结束 ---
 }
+// ▲▲▲ 替换结束 ▲▲▲
 
 // 渲染日记列表
 function renderDiaries() {
@@ -20421,39 +20470,62 @@ function setupDiarySystem() {
     }
 
     // --- 事件处理函数 ---
-
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 saveUserDiary 函数 ▼▼▼
     async function saveUserDiary(e) {
         e.preventDefault();
         const content = document.getElementById('user-diary-content-input').value.trim();
         const editingId = document.getElementById('editing-user-diary-id').value;
 
-        if (editingId) {
-            const diary = db.userDiaries.find(d => d.id === editingId);
-            if (diary) diary.content = content;
-        } else {
-            const newDiary = {
-                id: `user_diary_${Date.now()}`,
-                timestamp: Date.now(),
-                content: content,
-                isFavorited: false,
-                aiComments: []
-            };
-            db.userDiaries.push(newDiary);
-            
-            // 自动偷看逻辑 (60%概率)
-            if (Math.random() < 0.6 && db.characters.length > 0) {
-                setTimeout(() => {
-                    const randomAi = db.characters[Math.floor(Math.random() * db.characters.length)];
-                    handleAiPeek(newDiary.id, randomAi.id, true); // true表示是自动偷看
-                }, 2000);
+        // --- “救生艇”改造开始 ---
+        const bufferKey = `pendingAction_updateUserDiaries`; // 使用统一的key
+
+        try {
+            // 1. 更新内存
+            if (editingId) {
+                const diary = db.userDiaries.find(d => d.id === editingId);
+                if (diary) diary.content = content;
+            } else {
+                const newDiary = {
+                    id: `user_diary_${Date.now()}`,
+                    timestamp: Date.now(),
+                    content: content,
+                    isFavorited: false,
+                    aiComments: []
+                };
+                db.userDiaries.push(newDiary);
+                
+                // 自动偷看逻辑 (保持不变)
+                if (Math.random() < 0.6 && db.characters.length > 0) {
+                    setTimeout(() => {
+                        const randomAi = db.characters[Math.floor(Math.random() * db.characters.length)];
+                        handleAiPeek(newDiary.id, randomAi.id, true);
+                    }, 2000);
+                }
             }
+            
+            // 2. 同步“救生艇”
+            localStorage.setItem(bufferKey, JSON.stringify(db.userDiaries));
+
+            // 3. 异步“货轮”
+            let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+            baseData.userDiaries = db.userDiaries;
+            await dataStorage.saveData('章鱼喷墨机', baseData);
+
+            // 4. 清理“救生艇”
+            localStorage.removeItem(bufferKey);
+            
+            // 5. 更新UI
+            renderUserDiaries();
+            showToast('日记已保存');
+            writeUserDiaryModal.classList.remove('visible');
+
+        } catch (error) {
+            showToast('日记保存失败');
+            console.error("保存我的日记失败:", error);
         }
-        
-        scheduleSaveData();
-        renderUserDiaries();
-        showToast('日记已保存');
-        writeUserDiaryModal.classList.remove('visible');
+        // --- “救生艇”改造结束 ---
     }
+// ▲▲▲ 替换结束 ▲▲▲
 
     async function handleAiPeek(diaryId, aiId, isAuto = false) {
         const userDiary = db.userDiaries.find(d => d.id === diaryId);
@@ -20566,6 +20638,7 @@ function setupDiarySystem() {
         }
     });
 
+// ▼▼▼ 请用这个完整的、修正后的新代码块，替换掉文件中旧的 document.body.addEventListener('click', ...) 监听器 ▼▼▼
     document.body.addEventListener('click', async e => {
         const summary = e.target.closest('.diary-header');
         if (summary) {
@@ -20595,26 +20668,65 @@ function setupDiarySystem() {
         if (!diary) return;
 
         if (e.target.closest('.favorite-diary-btn')) {
-            if (isFavoriteProcessing) return; // 如果正在处理中，则阻止后续操作
-        isFavoriteProcessing = true; // 上锁
+            if (isFavoriteProcessing) return;
+            isFavoriteProcessing = true;
 
-        const favBtn = e.target.closest('.favorite-diary-btn');
-        diary.isFavorited = !diary.isFavorited; // 切换状态
-        scheduleSaveData(); // 保存新状态
+            const favBtn = e.target.closest('.favorite-diary-btn');
+            
+            // --- “救生艇”改造开始 ---
+            try {
+                // 1. 更新内存
+                diary.isFavorited = !diary.isFavorited;
 
-        // 根据最终状态更新UI和提示
-        favBtn.classList.toggle('favorited', diary.isFavorited);
-        showToast(diary.isFavorited ? '已收藏' : '已取消收藏');
+                let bufferKey = '';
+                let dataToSave;
+                let isBaseData = false;
 
-        // 300毫秒后解锁，以便下次可以点击
-        setTimeout(() => { isFavoriteProcessing = false; }, 300);
-        // ▲▲▲ 替换结束 ▲▲▲
-    }
+                if (diaryType === 'user') {
+                    bufferKey = `pendingAction_updateUserDiaries`;
+                    dataToSave = db.userDiaries;
+                    isBaseData = true; // 标记这是主DB对象的一部分
+                } else {
+                    bufferKey = `pendingAction_updateCharacter_${character.id}`;
+                    dataToSave = character;
+                }
+
+                // 2. 同步“救生艇”
+                localStorage.setItem(bufferKey, JSON.stringify(dataToSave));
+
+                // 3. 异步“货轮”
+                if (isBaseData) {
+                    let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+                    baseData.userDiaries = dataToSave;
+                    await dataStorage.saveData('章鱼喷墨机', baseData);
+                } else {
+                    await dataStorage.saveData(`character_${character.id}`, dataToSave);
+                }
+
+                // 4. 清理“救生艇”
+                localStorage.removeItem(bufferKey);
+
+                // 5. 更新UI
+                favBtn.classList.toggle('favorited', diary.isFavorited);
+                showToast(diary.isFavorited ? '已收藏' : '已取消收藏');
+
+            } catch (error) {
+                showToast('收藏操作失败');
+                console.error("收藏日记失败:", error);
+                // 如果失败，回滚内存中的更改
+                diary.isFavorited = !diary.isFavorited;
+            } finally {
+                // 300毫秒后解锁
+                setTimeout(() => { isFavoriteProcessing = false; }, 300);
+            }
+            // --- “救生艇”改造结束 ---
+        }
+        
         if (e.target.closest('.delete-diary-btn')) {
             if (confirm('确定要删除这篇日记吗？')) {
                 const index = diaryList.findIndex(d => d.id === diaryId);
                 if (index > -1) diaryList.splice(index, 1);
-                scheduleSaveData();
+                scheduleSaveData(); // 删除操作不那么频繁，用延迟保存即可
                 diaryEntry.remove();
                 showToast('日记已删除');
             }
@@ -20627,6 +20739,7 @@ function setupDiarySystem() {
              writeUserDiaryModal.classList.add('visible');
         }
     });
+// ▲▲▲ 替换结束 ▲▲▲
     
     aiDiaryScreen.addEventListener('click', e => {
         if (e.target.id === 'prev-page-btn') { currentAiDiaryPage--; renderAiDiaries(); } 
@@ -22383,7 +22496,7 @@ function updateQuantity(amount) {
                 return;
             }
 
-            // --- 核心改造：为“添加到物流”和“添加付款记录”增加保险 ---
+            // --- “救生艇”改造开始 ---
             const transactionId = `purchase_${Date.now()}`;
             const logisticsBufferKey = `pendingAction_addLogistics_${transactionId}`;
             const paymentHistoryBufferKey = `pendingAction_addPaymentHistory_${transactionId}`;
@@ -22431,9 +22544,8 @@ function updateQuantity(amount) {
             } catch (error) {
                 showToast('支付后数据处理失败，请刷新重试');
                 console.error("处理支付后续操作失败:", error);
-                // 即使失败，支付已经完成，所以不中断后续UI
             }
-            // --- 改造结束 ---
+            // --- “救生艇”改造结束 ---
 
             const deliveryMessage = {
                 id: `msg_delivery_${Date.now()}`,
@@ -24928,24 +25040,54 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
             switchScreen('memory-detail-screen');
         }
 
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 saveMemory 函数 ▼▼▼
         async function saveMemory(characterId, memoryData) {
             const character = db.characters.find(c => c.id === characterId);
-            if (character && memoryData.title && memoryData.content && memoryData.commentary) {
-                if (!character.memories) {
-                    character.memories = [];
-                }
-                const newMemory = {
-                    id: `memory_${Date.now()}`,
-                    timestamp: Date.now(),
-                    title: memoryData.title,
-                    content: memoryData.content,
-                    commentary: memoryData.commentary
-                };
-                character.memories.push(newMemory);
-                scheduleSaveData();
-                console.log("一段新的回忆已保存:", newMemory);
+            if (!character || !memoryData.title || !memoryData.content || !memoryData.commentary) {
+                console.warn("保存回忆失败：缺少角色或必要的回忆数据。");
+                return;
             }
+
+            if (!character.memories) {
+                character.memories = [];
+            }
+            
+            const newMemory = {
+                id: `memory_${Date.now()}`,
+                timestamp: Date.now(),
+                title: memoryData.title,
+                content: memoryData.content,
+                commentary: memoryData.commentary
+            };
+
+            // --- “救生艇”改造开始 ---
+            const bufferKey = `pendingAction_updateCharacter_${character.id}`;
+
+            try {
+                // 1. 更新内存
+                character.memories.push(newMemory);
+
+                // 2. 同步“救生艇”
+                localStorage.setItem(bufferKey, JSON.stringify(character));
+                console.log(`同步备份了角色(含新回忆)到 localStorage: ${character.remarkName}`);
+                
+                // 3. 异步“货轮”
+                await dataStorage.saveData(`character_${character.id}`, character);
+                
+                // 4. 清理“救生艇”
+                localStorage.removeItem(bufferKey);
+                console.log(`主存储成功，已清理 localStorage 的角色备份`);
+
+                // 5. 更新UI (保持不变)
+                console.log("一段新的回忆已自动保存:", newMemory);
+
+            } catch (error) {
+                showToast('回忆自动保存失败，请刷新重试');
+                console.error("自动保存回忆失败:", error);
+            }
+            // --- “救生艇”改造结束 ---
         }
+// ▲▲▲ 替换结束 ▲▲▲
 // --- 自定义主屏幕小组件功能 ---
 function setupCustomWidgetSystem() {
     const modal = document.getElementById('customize-widget-modal');
@@ -25175,48 +25317,81 @@ function setupMemorySummaryModal() {
 // === 新增：主页头图编辑器功能 ===
 // ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 setupHomeScreenProfileEditor 函数 ▼▼▼
         function setupHomeScreenProfileEditor() {
+            // --- 缓存所有相关的DOM元素 ---
             const header = document.querySelector('.home-profile-header');
             if (!header) return;
-
+            
+            // 主页元素
             const heroEl = header.querySelector('.home-hero');
             const avatarImg = header.querySelector('#home-profile-avatar');
             const nameEl = header.querySelector('.home-profile-name');
             const signatureEl = header.querySelector('.home-profile-signature');
+            
+            // 商城个人中心页元素
+            const mallAvatarEl = document.getElementById('profile-avatar');
+            const mallUsernameEl = document.getElementById('profile-username');
+            
+            // 编辑弹窗元素
             const editModal = document.getElementById('home-profile-edit-modal');
             const fileUploadInput = document.getElementById('home-profile-image-upload');
             let currentProfileEditTarget = null;
 
-// 1. 渲染函数 (保持不变)
-    function renderProfile() {
-        const profile = db.homeProfile;
-        heroEl.style.backgroundImage = `url('${profile.heroBg}')`;
-        avatarImg.src = profile.avatar;
-        nameEl.textContent = profile.name;
-        signatureEl.textContent = profile.signature;
-    }
+            // --- 核心函数1：渲染函数 (现在会同时更新主页和商城) ---
+            function renderProfile() {
+                const profile = db.homeProfile;
+                if (!profile) return;
+                
+                // 更新主页
+                heroEl.style.backgroundImage = `url('${profile.heroBg}')`;
+                avatarImg.src = profile.avatar;
+                nameEl.textContent = profile.name;
+                signatureEl.textContent = profile.signature;
+                
+                // 更新商城个人中心
+                if (mallAvatarEl) mallAvatarEl.src = profile.avatar;
+                if (mallUsernameEl) mallUsernameEl.textContent = profile.name;
+            }
 
-            // --- 核心改造：创建一个通用的、可靠的保存函数 ---
+            // --- 核心函数2：使用“救生艇”的可靠保存函数 ---
             const saveHomeProfile = async () => {
                 const bufferKey = 'pendingAction_saveHomeProfile';
                 try {
+                    // 1. 同步“救生艇”
                     localStorage.setItem(bufferKey, JSON.stringify(db.homeProfile));
+                    
+                    // 2. 异步“货轮”
                     await dataStorage.saveData('homeProfile_data', db.homeProfile);
+                    
+                    // 3. 清理“救生艇”
                     localStorage.removeItem(bufferKey);
-                    renderProfile(); // 确保UI与数据同步
-                    showToast('主页信息已更新');
+                    
+                    // 4. 更新UI并提示
+                    renderProfile();
+                    showToast('个人信息已更新');
+
                 } catch (error) {
-                    showToast('主页信息保存失败');
-                    console.error("保存主页信息失败:", error);
+                    showToast('个人信息保存失败');
+                    console.error("保存个人信息失败:", error);
                 }
             };
 
+            // --- 绑定事件 ---
+            
+            // 打开图片编辑菜单的通用函数
             const openEditMenu = (target) => { currentProfileEditTarget = target; editModal.classList.add('visible'); };
+            
+            // 主页的点击事件
             heroEl.addEventListener('click', () => openEditMenu('heroBg'));
             avatarImg.parentElement.addEventListener('click', () => openEditMenu('avatar'));
+            
+            // 【新增】商城个人中心的头像点击事件
+            if (mallAvatarEl) {
+                mallAvatarEl.addEventListener('click', () => openEditMenu('avatar'));
+            }
 
+            // 编辑弹窗的按钮事件
             document.getElementById('cancel-edit-profile-btn').onclick = () => editModal.classList.remove('visible');
             editModal.onclick = (e) => { if (e.target === editModal) editModal.classList.remove('visible'); };
-
             document.getElementById('edit-profile-from-url-btn').onclick = async () => {
                 const newUrl = prompt(`请输入新的${currentProfileEditTarget === 'heroBg' ? '背景图' : '头像'}URL：`, db.homeProfile[currentProfileEditTarget]);
                 if (newUrl && newUrl.trim()) {
@@ -25225,9 +25400,7 @@ function setupMemorySummaryModal() {
                 }
                 editModal.classList.remove('visible');
             };
-
             document.getElementById('edit-profile-from-local-btn').onclick = () => { fileUploadInput.click(); editModal.classList.remove('visible'); };
-
             fileUploadInput.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (file && currentProfileEditTarget) {
@@ -25240,22 +25413,26 @@ function setupMemorySummaryModal() {
                 e.target.value = null;
             };
 
-            nameEl.addEventListener('click', async () => {
-                const newName = prompt('请输入新的昵称：', db.homeProfile.name);
-                if (newName && newName.trim()) {
-                    db.homeProfile.name = newName.trim();
-                    await saveHomeProfile(); // 使用新函数保存
+            // 昵称和签名的点击事件
+            const createEditHandler = (element, key) => {
+                if(element) {
+                    element.addEventListener('click', async () => {
+                        const promptTitle = (key === 'name') ? '请输入新的昵称：' : '请输入新的个性签名：';
+                        const newValue = prompt(promptTitle, db.homeProfile[key]);
+                        if (newValue !== null && newValue.trim()) { // 允许设置为空
+                            db.homeProfile[key] = newValue.trim();
+                            await saveHomeProfile();
+                        }
+                    });
                 }
-            });
+            };
 
-            signatureEl.addEventListener('click', async () => {
-                const newSignature = prompt('请输入新的个性签名：', db.homeProfile.signature);
-                if (newSignature && newSignature.trim()) {
-                    db.homeProfile.signature = newSignature.trim();
-                    await saveHomeProfile(); // 使用新函数保存
-                }
-            });
+            createEditHandler(nameEl, 'name');
+            createEditHandler(signatureEl, 'signature');
+            // 【新增】为商城个人中心的昵称也绑定编辑事件
+            createEditHandler(mallUsernameEl, 'name');
 
+            // 初始渲染
             renderProfile();
         }
 // ▲▲▲ 替换结束 ▲▲▲
@@ -31359,86 +31536,6 @@ function updateBottomNavVisibilityByActive() {
         return profile;
     }
 
-    async function saveUserComment(momentId, commentText, replyToCommentId = null, replyToAuthorName = null) {
-        try {
-            if (!_db || !momentId || !commentText) return;
-            const moment = await _db.moments.get(momentId);
-            if (!moment) return;
-
-            const myProfile = loadProfileFromStorage();
-            const myId = myProfile.id || 'user';
-            const myName = myProfile.name || '我';
-
-            const newComment = {
-                id: `comment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                roleId: myId,
-                text: commentText,
-                ts: Date.now(),
-                replies: []
-            };
-
-            let notificationTargetCharacter = null;
-            let notificationContent = '';
-            
-            if (replyToCommentId) {
-                const findAndAddReply = (comments) => {
-                    for (const c of comments) {
-                        if (c.id === replyToCommentId) {
-                            c.replies = c.replies || [];
-                            c.replies.push(newComment);
-                            return c;
-                        }
-                        if (c.replies && c.replies.length > 0) {
-                            const found = findAndAddReply(c.replies);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                };
-                const parentComment = findAndAddReply(moment.comments || []);
-                
-                if (parentComment) {
-                    if (parentComment.roleId && parentComment.roleId.startsWith('char_')) {
-                        notificationTargetCharacter = window.db.characters.find(c => c.id === parentComment.roleId);
-                        const momentSnippet = moment.text.substring(0, 15) + (moment.text.length > 15 ? '...' : '');
-                        notificationContent = `[system: ${myName} 回复了你对动态 "${momentSnippet}" 的评论: "${commentText}"]`;
-                    }
-                } else {
-                     moment.comments = moment.comments || [];
-                     moment.comments.push(newComment);
-                }
-            } else {
-                moment.comments = moment.comments || [];
-                moment.comments.push(newComment);
-                
-                if (moment.authorId && moment.authorId.startsWith('char_')) {
-                    notificationTargetCharacter = window.db.characters.find(c => c.id === moment.authorId);
-                    const momentSnippet = moment.text.substring(0, 15) + (moment.text.length > 15 ? '...' : '');
-                    notificationContent = `[system: ${myName} 评论了你的动态 "${momentSnippet}": "${commentText}"]`;
-                }
-            }
-
-            moment.commentedBy = moment.commentedBy || [];
-            if (!moment.commentedBy.includes(myId)) moment.commentedBy.push(myId);
-
-            await _db.moments.put(moment);
-
-            if (notificationTargetCharacter && notificationContent) {
-                const contextMessage = {
-                    id: `msg_context_${Date.now()}`,
-                    role: 'user', content: notificationContent,
-                    parts: [{ type: 'text', text: notificationContent }], timestamp: Date.now()
-                };
-                addMessageToChat(notificationTargetCharacter, contextMessage);
-                if (typeof window.scheduleSaveData === 'function') await window.scheduleSaveData();
-            }
-            
-            renderMomentsSafe();
-        } catch (e) {
-            console.error(`Failed to save user comment for moment ${momentId}:`, e);
-            if (typeof showToast === 'function') showToast('评论失败');
-        }
-    }
 
     window.renderMomentsSafe = async function renderMomentsSafe() {
       try {
