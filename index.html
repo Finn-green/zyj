@@ -3486,6 +3486,58 @@ html, body {
 }
 
 /* --- ▲▲▲ 添加结束 ▲▲▲ */
+/* --- 在 <style> 标签末尾添加 --- */
+
+/* 新的回复按钮样式 */
+.reply-to-comment-btn {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 6px;
+    margin-left: 8px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+.moment-comment:hover .reply-to-comment-btn {
+    opacity: 1;
+}
+.reply-to-comment-btn:hover {
+    color: var(--primary-color);
+}
+
+/* 动态插入的回复输入框容器样式 */
+.reply-input-container {
+    margin-top: 8px;
+    margin-left: 20px; /* 保持与回复内容一致的缩进 */
+    display: flex;
+    gap: 8px;
+    animation: fadeIn 0.3s ease;
+}
+.reply-input {
+    flex-grow: 1;
+    border: 1px solid #eee;
+    border-radius: 15px;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+.reply-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+.post-reply-btn {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 15px;
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+/* --- 添加结束 --- */
+
     </style>
     <!-- === moments 固定在 phone-screen 内的修复样式 (自动插入补丁) === -->
 <style>
@@ -18712,24 +18764,76 @@ async function processStream(response, chat, apiType) {
 // END: 字体预设功能
 // ===============================================================
 // --- 新代码结束 ---
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 setupFontSettingsApp 函数 ▼▼▼
         function setupFontSettingsApp() {
+            const fontSettingsForm = document.getElementById('font-settings-form');
+            const fontUrlInput = document.getElementById('font-url');
+            const restoreDefaultFontBtn = document.getElementById('restore-default-font-btn');
+
+            // 初始加载时，显示当前保存的字体URL
             fontUrlInput.value = db.fontUrl;
+
+            // --- 核心改造：为“应用字体”按钮添加“救生艇” ---
             fontSettingsForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const newFontUrl = fontUrlInput.value.trim();
-                db.fontUrl = newFontUrl;
-                scheduleSaveData();
-                applyGlobalFont(newFontUrl);
-                showToast('新字体已应用！');
+                const bufferKey = 'pendingAction_saveFontUrl'; // 使用与 loadData 恢复逻辑匹配的键
+
+                try {
+                    // 1. 同步“救生艇”：立即将新字体URL写入 localStorage
+                    localStorage.setItem(bufferKey, newFontUrl);
+                    console.log(`救生艇：已备份字体URL到 localStorage`);
+
+                    // 2. 更新内存
+                    db.fontUrl = newFontUrl;
+
+                    // 3. 异步“货轮”：将新字体URL写入主数据库
+                    await dataStorage.saveData('fontUrl_data', newFontUrl);
+
+                    // 4. 清理“救生艇”
+                    localStorage.removeItem(bufferKey);
+                    console.log(`货轮抵达：已清理 localStorage 的字体备份`);
+
+                    // 5. 更新UI
+                    applyGlobalFont(newFontUrl);
+                    showToast('新字体已应用并永久保存！');
+
+                } catch (error) {
+                    showToast('字体保存失败，请刷新重试');
+                    console.error("保存字体失败:", error);
+                }
             });
+
+            // --- 核心改造：为“恢复默认”按钮也添加“救生艇” ---
             restoreDefaultFontBtn.addEventListener('click', async () => {
-                fontUrlInput.value = '';
-                db.fontUrl = '';
-                scheduleSaveData();
-                applyGlobalFont('');
-                showToast('已恢复默认字体！');
+                const newFontUrl = ''; // 恢复默认就是设置为空字符串
+                const bufferKey = 'pendingAction_saveFontUrl';
+
+                try {
+                    // 1. 同步“救生艇”
+                    localStorage.setItem(bufferKey, newFontUrl);
+                    
+                    // 2. 更新内存和UI输入框
+                    fontUrlInput.value = '';
+                    db.fontUrl = newFontUrl;
+                    
+                    // 3. 异步“货轮”
+                    await dataStorage.saveData('fontUrl_data', newFontUrl);
+                    
+                    // 4. 清理“救生艇”
+                    localStorage.removeItem(bufferKey);
+
+                    // 5. 更新UI
+                    applyGlobalFont(newFontUrl);
+                    showToast('已恢复默认字体并永久保存！');
+
+                } catch (error) {
+                    showToast('恢复默认字体失败，请刷新重试');
+                    console.error("恢复默认字体失败:", error);
+                }
             });
         }
+// ▲▲▲ 替换结束 ▲▲▲
 
         function applyGlobalFont(fontUrl) {
             const styleId = 'global-font-style';
@@ -23678,7 +23782,7 @@ function setupMomentsEventListeners() {
         return;
     }
 
-    // --- 核心修复：唯一的、基于事件委托的监听器，适配“始终可见”的输入框 ---
+    // --- 使用一个统一的、基于事件委托的监听器来处理所有点击 ---
     momentsScreen.addEventListener('click', async (e) => {
         const myProfile = loadProfileFromStorage();
         const myId = myProfile.id || 'user';
@@ -23705,7 +23809,7 @@ function setupMomentsEventListeners() {
             return;
         }
 
-        // --- 逻辑2：处理评论按钮 ---
+        // --- 逻辑2：处理旧的顶级“评论”按钮 (现在它的功能是打开主评论框) ---
         const commentBtn = e.target.closest('.moment-action-btn[data-action="comment"]');
         if (commentBtn) {
             e.stopPropagation();
@@ -23713,47 +23817,73 @@ function setupMomentsEventListeners() {
             if (momentItem) {
                 const inputArea = momentItem.querySelector('.moment-comment-input-area');
                 const input = inputArea.querySelector('input');
-                const postBtn = inputArea.querySelector('button');
-                
-                // 重置为对动态的直接评论状态
+                // 重置为对动态的直接评论
                 input.placeholder = '添加评论...';
-                delete postBtn.dataset.replyToCommentId;
-                delete postBtn.dataset.replyToAuthorName;
                 input.focus();
             }
             return;
         }
         
-        // --- 逻辑3：处理点击某条已有评论（用于回复） ---
-        const commentEl = e.target.closest('.moment-comment');
-        if (commentEl) {
+        // --- 【全新逻辑3】：处理每条评论旁边的“回复”按钮 ---
+        const replyToBtn = e.target.closest('.reply-to-comment-btn');
+        if (replyToBtn) {
             e.stopPropagation();
-            const authorId = commentEl.dataset.authorId;
             
-            if (authorId === myId) {
-                showToast("不能回复自己的评论哦~");
-                return;
+            // a. 先移除页面上所有已存在的回复框
+            document.querySelectorAll('.reply-input-container').forEach(el => el.remove());
+            
+            // b. 找到被点击的评论和它的占位符
+            const parentCommentEl = replyToBtn.closest('.moment-comment');
+            const parentCommentId = parentCommentEl.dataset.commentId;
+            const parentAuthorName = parentCommentEl.querySelector('strong').textContent.replace(':', '').trim();
+            const placeholder = parentCommentEl.nextElementSibling;
+
+            if (placeholder && placeholder.classList.contains('reply-input-container-placeholder')) {
+                // c. 创建新的回复输入框
+                const replyContainer = document.createElement('div');
+                replyContainer.className = 'reply-input-container';
+                replyContainer.innerHTML = `
+                    <input type="text" class="reply-input" placeholder="回复 ${parentAuthorName}:">
+                    <button class="post-reply-btn">回复</button>
+                `;
+                
+                // d. 将 momentId, 父评论ID, 父评论作者名 存到新按钮上
+                const postReplyBtn = replyContainer.querySelector('.post-reply-btn');
+                postReplyBtn.dataset.momentId = parentCommentEl.closest('.moment-item').dataset.id;
+                postReplyBtn.dataset.replyToCommentId = parentCommentId;
+                postReplyBtn.dataset.replyToAuthorName = parentAuthorName;
+
+                // e. 插入并聚焦
+                placeholder.appendChild(replyContainer);
+                replyContainer.querySelector('input').focus();
             }
-
-            const momentItem = commentEl.closest('.moment-item');
-            if (!momentItem) return;
-
-            const inputArea = momentItem.querySelector('.moment-comment-input-area');
-            const input = inputArea.querySelector('input');
-            const postBtn = inputArea.querySelector('button');
-            
-            const authorNameEl = commentEl.querySelector('strong');
-            const authorName = authorNameEl ? authorNameEl.textContent.replace(':', '').trim() : '评论者';
-
-            // 设置回复状态
-            input.placeholder = `回复 ${authorName}:`;
-            input.focus();
-            postBtn.dataset.replyToCommentId = commentEl.dataset.commentId;
-            postBtn.dataset.replyToAuthorName = authorName;
             return;
         }
         
-        // --- 逻辑4：处理“发布”评论按钮 ---
+        // --- 【全新逻辑4】：处理动态生成的“回复”按钮的点击事件 ---
+        const postReplyBtn = e.target.closest('.post-reply-btn');
+        if (postReplyBtn) {
+            e.stopPropagation();
+            const replyContainer = postReplyBtn.closest('.reply-input-container');
+            const input = replyContainer.querySelector('input');
+            const replyText = input.value.trim();
+            
+            if (replyText) {
+                await saveUserComment(
+                    postReplyBtn.dataset.momentId, 
+                    replyText, 
+                    postReplyBtn.dataset.replyToCommentId, 
+                    postReplyBtn.dataset.replyToAuthorName
+                );
+                // 成功后移除回复框
+                replyContainer.remove();
+            } else {
+                showToast('回复内容不能为空');
+            }
+            return;
+        }
+        
+        // --- 逻辑5：处理顶级的“发布”评论按钮 ---
         const postBtn = e.target.closest('.post-comment-btn[data-action="post-comment"]');
         if (postBtn) {
             e.stopPropagation();
@@ -23762,19 +23892,16 @@ function setupMomentsEventListeners() {
             const commentText = input.value.trim();
             
             if (commentText) {
-                await saveUserComment(momentId, commentText, postBtn.dataset.replyToCommentId, postBtn.dataset.replyToAuthorName);
-                // 成功后清空输入框和回复状态
+                await saveUserComment(momentId, commentText, null, null); // 明确表示这是顶级评论
                 input.value = '';
-                input.placeholder = '添加评论...';
-                delete postBtn.dataset.replyToCommentId;
-                delete postBtn.dataset.replyToAuthorName;
             } else {
                 showToast('评论内容不能为空');
             }
             return;
         }
     });
-    // --- “提及”功能 (@) 的逻辑保持不变 ---
+
+    // --- “提及”功能 (@) 的逻辑 ---
     const mentionPanel = document.getElementById('mention-panel');
     let currentInputElement = null;
     const showMentionPanel = (inputElement) => {
@@ -23819,7 +23946,7 @@ function setupMomentsEventListeners() {
         currentInputElement = null;
     };
     momentsScreen.addEventListener('input', (e) => {
-        if (e.target.matches('#post-text, .moment-comment-input')) {
+        if (e.target.matches('#post-text, .moment-comment-input, .reply-input')) {
             const input = e.target;
             const cursorPos = input.selectionStart;
             const textBeforeCursor = input.value.substring(0, cursorPos);
@@ -30839,7 +30966,7 @@ postForm.addEventListener('submit', async (ev) => {
     momentsContainer.appendChild(div);
   });
 }
-// --- 新增: 保存评论和点赞的辅助函数 ---
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 saveUserComment 函数 ▼▼▼
 async function saveUserComment(momentId, commentText, replyToCommentId = null, replyToAuthorName = null) {
     try {
         if (!db || !momentId || !commentText) return;
@@ -30866,7 +30993,6 @@ async function saveUserComment(momentId, commentText, replyToCommentId = null, r
             const findComment = (comments) => {
                 for (const c of comments) {
                     if (c.id === replyToCommentId) return c;
-                    // 注意：目前的设计AI回复和用户回复都存在replies数组，这里需要递归查找
                     if (c.replies && c.replies.length > 0) {
                         const found = findComment(c.replies);
                         if (found) return found;
@@ -30880,14 +31006,13 @@ async function saveUserComment(momentId, commentText, replyToCommentId = null, r
                 parentComment.replies = parentComment.replies || [];
                 parentComment.replies.push(newComment);
                 
-                // 如果回复的是AI，创建通知
                 if (parentComment.roleId && parentComment.roleId.startsWith('char_')) {
                     notificationTargetCharacter = window.db.characters.find(c => c.id === parentComment.roleId);
+                    // 【核心修复③】确保通知中的 commentId 是父评论的ID (parentComment.id)
                     const momentSnippet = moment.text.substring(0, 15) + (moment.text.length > 15 ? '...' : '');
-                    notificationContent = `[system: ${myName} 回复了你对动态 "${momentSnippet}" 的评论: "${commentText}"]`;
+                    notificationContent = `[system: ${myName} 回复了你对动态 "${momentSnippet}" 的评论 (commentId: ${parentComment.id}, momentId: ${momentId}): "${commentText}"]`;
                 }
             } else {
-                 // 如果找不到父评论（可能已被删除），则作为新评论添加
                  moment.comments = moment.comments || [];
                  moment.comments.push(newComment);
             }
@@ -30896,11 +31021,11 @@ async function saveUserComment(momentId, commentText, replyToCommentId = null, r
             moment.comments = moment.comments || [];
             moment.comments.push(newComment);
             
-            // 如果动态是AI发的，创建通知
             if (moment.authorId && moment.authorId.startsWith('char_')) {
                 notificationTargetCharacter = window.db.characters.find(c => c.id === moment.authorId);
+                // 【核心修复④】确保通知中的 commentId 是新评论自己的ID (newComment.id)
                 const momentSnippet = moment.text.substring(0, 15) + (moment.text.length > 15 ? '...' : '');
-                notificationContent = `[system: ${myName} 评论了你的动态 "${momentSnippet}": "${commentText}"]`;
+                notificationContent = `[system: ${myName} 评论了你的动态 "${momentSnippet}" (commentId: ${newComment.id}, momentId: ${momentId}): "${commentText}"]`;
             }
         }
 
@@ -30911,7 +31036,6 @@ async function saveUserComment(momentId, commentText, replyToCommentId = null, r
 
         await db.moments.put(moment);
 
-        // 如果需要发送通知给AI，则注入上下文消息
         if (notificationTargetCharacter && notificationContent) {
             const contextMessage = {
                 id: `msg_context_${Date.now()}`,
@@ -30926,13 +31050,13 @@ async function saveUserComment(momentId, commentText, replyToCommentId = null, r
             }
         }
         
-        renderMoments();
+        renderMomentsSafe();
     } catch (e) {
         console.error(`Failed to save user comment for moment ${momentId}:`, e);
         showToast('评论失败');
     }
 }
-
+// ▲▲▲ 替换结束 ▲▲▲
 async function saveMomentComment(momentId, authorId, commentText) {
     try {
         if (!window.AppDB_Moments || !window.AppDB_Moments.moments || !momentId) return;
@@ -31432,39 +31556,41 @@ function updateBottomNavVisibilityByActive() {
             const commentsWrap = document.createElement('div');
             commentsWrap.className = 'moment-comments';
 
-            // 这个递归函数是这次修复的关键
+// ▼▼▼ 在 renderMomentsSafe 函数内部，用这个新版本替换旧的 renderCommentTree 函数 ▼▼▼
             const renderCommentTree = (comments, level = 0) => {
-                if (!comments || comments.length === 0) return '';
+                if (!comments || comments.length === 0) {
+                    return level === 0 ? '<div style="color:#bbb; font-style: italic; padding: 4px 0;">还没有评论，快来抢沙发吧！</div>' : '';
+                }
                 let html = '';
                 comments.forEach(c => {
                     const authorInfo = getAuthorProfile(c.roleId);
                     
-                    // 默认情况下，没有“回复”前缀
-                    let replyPrefix = '';
-                    
-                    // --- 关键逻辑：检查这条评论是否是对另一条评论的回复 ---
-                    // 我们检查数据中是否存在 replyTo 字段（这个字段在旧的 saveAiReplyToComment 函数中已添加）
-                    // 或者，更可靠地，我们检查它是否在一个 replies 数组内（这意味着它必然是回复）
-                    // 为了简化，我们只判断层级
-                    if (level > 0) {
-                        // 由于我们无法直接知道它回复的是谁，这里暂时留空
-                        // 但正确的层级缩进已经可以体现关系
-                    }
-                    
-                    // 渲染单条评论，并为其添加 data- 属性
+                    // 【核心修复①】确保每条评论（包括子评论）都使用自己唯一的 c.id
                     html += `<div class="moment-comment" data-comment-id="${c.id}" data-author-id="${c.roleId}" style="margin-left: ${level * 20}px;">
                                 <strong>${authorInfo.name}:</strong> 
-                                ${replyPrefix}
                                 <span>${c.text}</span>
-                             </div>`;
+                                <button class="reply-to-comment-btn">回复</button>
+                             </div>
+                             <div class="reply-input-container-placeholder" data-parent-comment-id="${c.id}"></div>`;
                     
-                    // 递归地渲染这条评论下面的所有回复
+                    // 递归渲染回复
                     if (c.replies && c.replies.length > 0) {
-                        html += renderCommentTree(c.replies, level + 1); // 增加缩进层级
+                        c.replies.forEach(reply => {
+                             const replyAuthorInfo = getAuthorProfile(reply.roleId);
+                             // 【核心修复②】确保楼中楼的回复也使用自己唯一的 reply.id
+                             html += `<div class="moment-comment" data-comment-id="${reply.id}" data-author-id="${reply.roleId}" style="margin-left: ${(level + 1) * 20}px;">
+                                        <strong>${replyAuthorInfo.name}</strong> 
+                                        <span style="color:#888;">回复</span> 
+                                        <strong>${authorInfo.name}:</strong> 
+                                        <span>${reply.text}</span>
+                                        <!-- 回复的回复不再提供“回复”按钮，以简化UI -->
+                                     </div>`;
+                        });
                     }
                 });
                 return html;
             };
+// ▲▲▲ 替换结束 ▲▲▲
             
             // 启动渲染
             const initialComments = (m.comments && m.comments.length > 0) 
