@@ -9765,46 +9765,66 @@ function handlePngImport(file) {
  * @param {object} cardData - 从 .json 或 .png 中解析出的角色数据对象
  * @param {string} avatarUrl - 角色的头像 Data URL 或默认 URL
  */
-// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 createCharacterFromCard 函数 ▼▼▼
+// ▼▼▼ 请用这个完整的、最终修正版的新函数，替换掉文件中旧的 createCharacterFromCard 函数 ▼▼▼
+        /**
+         * [V3.1 | SillyTavern 兼容修复版] 根据角色卡数据创建新角色，并正确导入世界书。
+         * @param {object} cardData - 从 .json 或 .png 中解析出的角色数据对象
+         * @param {string} avatarUrl - 角色的头像 Data URL 或默认 URL
+         */
         async function createCharacterFromCard(cardData, avatarUrl) {
-            // 兼容不同版本的角色卡格式 (v2/v3)
             const data = cardData.data || cardData;
             if (!data || !data.name) {
                 showToast('导入失败：角色卡格式不正确，缺少名称。');
                 return;
             }
 
-            // --- 核心修改：先将所有新数据创建在临时变量中 ---
             const newWorldBooks = [];
-            const newRendererRules = [];
             const worldBookIds = [];
+            let newRendererRules = []; // 保持此变量，以防未来添加真正的正则导入
 
-            if (data.character_book && data.character_book.entries && data.character_book.entries.length > 0) {
-                const categoryName = `${data.name} - 世界书`;
+            // --- 核心修复 1：正确处理世界书 (character_book) ---
+            if (data.character_book && Array.isArray(data.character_book.entries)) {
+                
+                // 为这个角色创建一个专属的世界书分类
+                const categoryName = `${data.name} - 专属设定`;
                 let category = db.worldBookCategories.find(c => c.name === categoryName);
                 if (!category) {
                     category = { id: `cat_${Date.now()}`, name: categoryName, isCollapsed: false };
-                    db.worldBookCategories.push(category); // 分类可以先加入内存
+                    db.worldBookCategories.push(category); 
                 }
 
                 let entryCounter = 1;
                 for (const entry of data.character_book.entries) {
                     if (!entry.content) continue;
-                    const contentParts = entry.content.split('---').map(part => part.trim()).filter(part => part.length > 0);
-                    for (const partContent of contentParts) {
-                        const newWorldBook = {
-                            id: `wb_${Date.now()}_${entryCounter}`,
-                            name: `${data.name} - 条目 ${entryCounter}`,
-                            content: partContent,
-                            position: 'before',
-                            categoryId: category.id
-                        };
-                        newWorldBooks.push(newWorldBook); // 添加到临时数组
-                        worldBookIds.push(newWorldBook.id);
-                        entryCounter++;
-                    }
+                    
+                    // 【修复命名】优先使用 `comment` 字段作为名称，其次是第一个关键词
+                    const entryName = entry.comment || (entry.keys && entry.keys.length > 0 ? entry.keys[0] : null) || `${data.name} - 条目 ${entryCounter}`;
+
+                    // 【修复关键词】将 keys 数组转换为逗号分隔的字符串
+                    const keywords = entry.keys ? entry.keys.join(',') : '';
+
+                    const newWorldBook = {
+                        id: `wb_${Date.now()}_${entryCounter}`,
+                        name: entryName,
+                        content: entry.content,
+                        position: 'before',
+                        categoryId: category.id,
+                        keywords: keywords,
+                        alwaysActive: entry.constant || false,
+                        caseSensitive: entry.case_sensitive || false
+                    };
+
+                    newWorldBooks.push(newWorldBook);
+                    worldBookIds.push(newWorldBook.id);
+                    entryCounter++;
                 }
             }
+            
+            // --- 核心修复 2：移除错误的渲染器导入逻辑 ---
+            // 之前的代码错误地将带有关键词的世界书条目当作渲染器规则。
+            // 真正的SillyTavern局部正则是不同的数据结构，我们在这里不再处理它，
+            // 从而确保世界书条目100%进入世界书。
+            // (未来如果需要导入真正的局部正则，需要在这里添加新的、独立的解析逻辑)
 
             const newChar = {
                 id: `char_${Date.now()}`,
@@ -9825,7 +9845,7 @@ function handlePngImport(file) {
                 memories: [],
                 isPinned: false,
                 status: '在线',
-                worldBookIds: worldBookIds,
+                worldBookIds: worldBookIds, // 正确关联所有新创建的世界书条目
                 useCustomBubbleCss: false,
                 customBubbleCss: '',
                 pendingMessages: [],
@@ -9839,67 +9859,36 @@ function handlePngImport(file) {
                 blockEndTime: null,
             };
 
-            if (data.character_book && data.character_book.entries && data.character_book.entries.length > 0) {
-                const regexEntries = data.character_book.entries.filter(entry => entry.use_regex && entry.keys.length > 0 && entry.content);
-                if (regexEntries.length > 0) {
-                    const categoryName = data.name;
-                    let category = db.rendererCategories.find(c => c.name === categoryName);
-                    if (!category) {
-                        category = { id: `rend_cat_${Date.now()}`, name: categoryName };
-                        db.rendererCategories.push(category);
-                    }
-                    regexEntries.forEach((entry, index) => {
-                        const newRule = {
-                            id: `rend_rule_${Date.now()}_${index}`,
-                            name: entry.comment || `${data.name} 规则 ${index + 1}`,
-                            regex: entry.keys.join('|'),
-                            html: entry.content,
-                            characterIds: [newChar.id],
-                            enabled: entry.enabled,
-                            categoryId: category.id
-                        };
-                        newRendererRules.push(newRule); // 添加到临时数组
-                    });
-                }
-            }
-            
-            // --- 核心改造：同步救生艇 + 异步货轮 ---
             const importTransaction = { newChar, newWorldBooks, newRendererRules };
             const bufferKey = `pendingAction_importChar_${newChar.id}`;
 
             try {
-                // 1. 同步“救生艇”：将整个导入事务写入 localStorage
+                // 使用“救生艇”模式保存所有新数据
                 localStorage.setItem(bufferKey, JSON.stringify(importTransaction));
-                console.log(`同步备份了导入事务到 localStorage: ${newChar.remarkName}`);
 
-                // 2. 更新内存中的数据 (用于UI即时刷新)
                 db.characters.push(newChar);
                 db.worldBooks.push(...newWorldBooks);
+                // (由于我们移除了正则导入，newRendererRules 数组是空的，但逻辑保持不变)
                 db.renderers.push(...newRendererRules);
 
-                // 3. 异步“货轮”：立即、直接地将所有新数据写入主数据库
                 await dataStorage.saveData(`character_${newChar.id}`, newChar);
                 await dataStorage.saveData('worldBooks_data', db.worldBooks);
-                // 渲染器规则是主db对象的一部分，需要保存整个db
                 const { characters, groups, worldBooks, ...baseData } = db;
                 await dataStorage.saveData('章鱼喷墨机', baseData);
 
-                // 4. 异步操作成功后，清理“救生艇”
                 localStorage.removeItem(bufferKey);
-                console.log(`主存储成功，已清理 localStorage 的导入备份: ${newChar.remarkName}`);
 
             } catch (error) {
                 console.error("导入角色时发生严重错误:", error);
                 showToast('导入失败，请检查控制台并刷新重试');
-                // 发生错误时，回滚内存中的更改，让恢复逻辑处理
+                // 回滚内存更改
                 db.characters = db.characters.filter(c => c.id !== newChar.id);
                 db.worldBooks = db.worldBooks.filter(wb => !newWorldBooks.some(nwb => nwb.id === wb.id));
-                db.renderers = db.renderers.filter(r => !newRendererRules.some(nrr => nrr.id === r.id));
-                localStorage.removeItem(bufferKey); // 清理可能失败的备份
+                db.rendererCategories = db.rendererCategories.filter(cat => !newWorldBooks.some(nwb => nwb.categoryId === cat.id));
+                localStorage.removeItem(bufferKey);
                 return;
             }
 
-            // 5. 更新UI
             renderChatList();
             showToast(`角色“${newChar.remarkName}”已成功导入！`);
         }
@@ -18933,87 +18922,72 @@ function populateCategorySelect(selectedCategoryId = 'uncategorized') {
 }
 
 // ▲▲▲ 添加结束 ▲▲▲
-   function setupWorldBookApp() {
-   	const importWorldBookBtn = document.getElementById('import-world-book-btn');
-const worldBookImportInput = document.getElementById('world-book-import-input');
-
-importWorldBookBtn.addEventListener('click', () => {
-    worldBookImportInput.click();
-});
-
-worldBookImportInput.addEventListener('change', handleWorldBookImport);
-    // 监听打开编辑/创建世界书页面的事件
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 setupWorldBookApp 函数 ▼▼▼
+function setupWorldBookApp() {
+    // --- 这部分代码保持不变 ---
+    const importWorldBookBtn = document.getElementById('import-world-book-btn');
+    const worldBookImportInput = document.getElementById('world-book-import-input');
+    importWorldBookBtn.addEventListener('click', () => {
+        worldBookImportInput.click();
+    });
+    worldBookImportInput.addEventListener('change', handleWorldBookImport);
     addWorldBookBtn.addEventListener('click', () => {
         currentEditingWorldBookId = null;
         editWorldBookForm.reset();
         document.querySelector('input[name="world-book-position"][value="before"]').checked = true;
-        // 调用全局函数填充分类
         populateCategorySelect();
         switchScreen('edit-world-book-screen');
     });
 
-    // 表单保存逻辑 (确保只绑定一次)
-editWorldBookForm.onsubmit = async function(e) {
-            e.preventDefault();
-            const selectedCategoryId = document.getElementById('world-book-category-select').value;
-            const name = worldBookNameInput.value.trim();
-            const content = worldBookContentInput.value.trim();
-            const position = document.querySelector('input[name="world-book-position"]:checked').value;
-            
-            const keywords = document.getElementById('world-book-keywords').value.trim();
-            const alwaysActive = document.getElementById('world-book-always-active').checked;
-            const caseSensitive = document.getElementById('world-book-case-sensitive').checked;
-
-            if (!name || !content) return showToast('名称和内容不能为空');
-            
-            const bookData = { name, content, position, categoryId: selectedCategoryId, keywords, alwaysActive, caseSensitive };
-            const isEditing = !!currentEditingWorldBookId;
-            const bookId = isEditing ? currentEditingWorldBookId : `wb_${Date.now()}`;
-            bookData.id = bookId;
-
-            const bufferKey = `pendingAction_saveWorldBook_${bookId}`;
-
-            try {
-                // 1. 同步“救生艇”
-                localStorage.setItem(bufferKey, JSON.stringify(bookData));
-                console.log(`同步备份了世界书条目到 localStorage: ${bookData.name}`);
-
-                // 2. 更新内存
-                if (isEditing) {
-                    const book = db.worldBooks.find(wb => wb.id === bookId);
-                    if (book) Object.assign(book, bookData);
-                } else {
-                    db.worldBooks.push(bookData);
-                }
-
-                // 3. 异步“货轮”：这里我们必须保存整个世界书数组
-                await dataStorage.saveData('worldBooks_data', db.worldBooks);
-                
-                // 4. 清理“救生艇”
-                localStorage.removeItem(bufferKey);
-                console.log(`主存储成功，已清理 localStorage 的世界书备份: ${bookData.name}`);
-
-            } catch (error) {
-                console.error("保存世界书时发生严重错误:", error);
-                showToast('保存失败，请检查控制台');
-                // 回滚内存更改
-                if (!isEditing) {
-                    db.worldBooks = db.worldBooks.filter(wb => wb.id !== bookId);
-                } // 编辑失败时，内存中的数据暂时保持旧状，等待刷新恢复
-                localStorage.removeItem(bufferKey);
-                return;
+    // --- 表单保存逻辑 (onsubmit) 也保持不变 ---
+    editWorldBookForm.onsubmit = async function(e) {
+        // ... 此处省略了您文件中已有的、正确的表单保存代码 ...
+        // (保持您文件中现有的 onsubmit 逻辑即可)
+        e.preventDefault();
+        const selectedCategoryId = document.getElementById('world-book-category-select').value;
+        const name = worldBookNameInput.value.trim();
+        const content = worldBookContentInput.value.trim();
+        const position = document.querySelector('input[name="world-book-position"]:checked').value;
+        const keywords = document.getElementById('world-book-keywords').value.trim();
+        const alwaysActive = document.getElementById('world-book-always-active').checked;
+        const caseSensitive = document.getElementById('world-book-case-sensitive').checked;
+        if (!name || !content) return showToast('名称和内容不能为空');
+        const bookData = { name, content, position, categoryId: selectedCategoryId, keywords, alwaysActive, caseSensitive };
+        const isEditing = !!currentEditingWorldBookId;
+        const bookId = isEditing ? currentEditingWorldBookId : `wb_${Date.now()}`;
+        bookData.id = bookId;
+        const bufferKey = `pendingAction_saveWorldBook_${bookId}`;
+        try {
+            localStorage.setItem(bufferKey, JSON.stringify(bookData));
+            if (isEditing) {
+                const book = db.worldBooks.find(wb => wb.id === bookId);
+                if (book) Object.assign(book, bookData);
+            } else {
+                db.worldBooks.push(bookData);
             }
-            
-            // 5. 更新UI
-            showToast('世界书条目已保存');
-            renderWorldBookList();
-            switchScreen('world-book-screen');
-        };
+            await dataStorage.saveData('worldBooks_data', db.worldBooks);
+            localStorage.removeItem(bufferKey);
+        } catch (error) {
+            console.error("保存世界书时发生严重错误:", error);
+            showToast('保存失败，请检查控制台');
+            if (!isEditing) {
+                db.worldBooks = db.worldBooks.filter(wb => wb.id !== bookId);
+            }
+            localStorage.removeItem(bufferKey);
+            return;
+        }
+        showToast('世界书条目已保存');
+        renderWorldBookList();
+        switchScreen('world-book-screen');
+    };
 
-    // 世界书列表的点击和长按事件
+    // --- 核心修复：简化事件监听，只处理它应该处理的事 ---
+
+    // 1. 普通点击事件（现在只负责处理“编辑条目”）
     worldBookListContainer.addEventListener('click', e => {
-       const item = e.target.closest('.world-book-item');
+        const item = e.target.closest('.world-book-item');
         if (item) {
+            // 点击的是单个条目 -> 进入编辑模式
             const book = db.worldBooks.find(wb => wb.id === item.dataset.id);
             if(book) {
                 currentEditingWorldBookId = book.id;
@@ -19028,70 +19002,98 @@ editWorldBookForm.onsubmit = async function(e) {
                 switchScreen('edit-world-book-screen');
             }
         }
+        // 【已删除】这里不再处理 .category-header 的点击，交由 setupWorldBookCategorySystem 函数负责
     });
 
-// ▼▼▼ 在 setupWorldBookApp 函数中，找到并替换这个事件监听器 ▼▼▼
-    worldBookListContainer.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return;
-        const item = e.target.closest('.world-book-item');
-        if (!item) return;
-        longPressTimer = setTimeout(() => {
+    // 2. 长按/右键事件（保持不变，它已经可以正确处理条目和分类的删除）
+    const handleLongPress = async (targetElement, clientX, clientY) => {
+        // ... 此处省略了您文件中已有的、正确的 handleLongPress 函数代码 ...
+        // (保持您文件中现有的 handleLongPress 逻辑即可)
+        const item = targetElement.closest('.world-book-item');
+        const category = targetElement.closest('.world-book-category');
+        let menuItems = [];
+        if (item) {
             const bookId = item.dataset.id;
-            const menuItems = [{
-                label: '删除',
-                danger: true,
-                action: async () => {
-                    if (confirm('确定要删除这个世界书条目吗？')) {
-                        
-                        const bufferKey = `pendingAction_deleteWorldBook_${bookId}`;
-
-                        try {
-                            // 1. 同步“救生艇”：标记待删除
-                            localStorage.setItem(bufferKey, 'true');
-
-                            // 2. 更新内存
-                            const originalWorldBooks = [...db.worldBooks];
-                            db.worldBooks = db.worldBooks.filter(wb => wb.id !== bookId);
-                            db.characters.forEach(char => {
-                                char.worldBookIds = (char.worldBookIds || []).filter(id => id !== bookId);
-                            });
-                            db.groups.forEach(group => {
-                                group.worldBookIds = (group.worldBookIds || []).filter(id => id !== bookId);
-                            });
-
-                            // 3. 异步“货轮”：保存更新后的整个世界书数组和所有角色/群组
-                            await dataStorage.saveData('worldBooks_data', db.worldBooks);
-                            // 保存所有角色的更改
-                            for (const char of db.characters) {
-                                await dataStorage.saveData(`character_${char.id}`, char);
+            const book = db.worldBooks.find(wb => wb.id === bookId);
+            if (book) {
+                menuItems.push({
+                    label: `删除条目 "${book.name}"`,
+                    danger: true,
+                    action: async () => {
+                        if (confirm('确定要删除这个世界书条目吗？')) {
+                            const bufferKey = `pendingAction_deleteWorldBook_${bookId}`;
+                            try {
+                                localStorage.setItem(bufferKey, 'true');
+                                db.worldBooks = db.worldBooks.filter(wb => wb.id !== bookId);
+                                db.characters.forEach(char => {
+                                    char.worldBookIds = (char.worldBookIds || []).filter(id => id !== bookId);
+                                });
+                                db.groups.forEach(group => {
+                                    group.worldBookIds = (group.worldBookIds || []).filter(id => id !== bookId);
+                                });
+                                await dataStorage.saveData('worldBooks_data', db.worldBooks);
+                                for (const char of db.characters) { await dataStorage.saveData(`character_${char.id}`, char); }
+                                for (const group of db.groups) { await dataStorage.saveData(`group_${group.id}`, group); }
+                                localStorage.removeItem(bufferKey);
+                                renderWorldBookList();
+                                showToast('条目已删除');
+                            } catch (error) {
+                                showToast('删除失败，请刷新重试');
+                                console.error("删除世界书条目失败:", error);
                             }
-                            // 保存所有群组的更改
-                            for (const group of db.groups) {
-                                await dataStorage.saveData(`group_${group.id}`, group);
-                            }
-
-                            // 4. 清理“救生艇”
-                            localStorage.removeItem(bufferKey);
-
-                            // 5. 更新UI
-                            renderWorldBookList();
-                            showToast('条目已删除');
-
-                        } catch (error) {
-                            showToast('删除失败，请刷新重试');
-                            console.error("删除世界书失败:", error);
-                            // 发生错误时，可以考虑回滚内存中的更改
                         }
                     }
-                }
-            }];
-            createContextMenu(menuItems, e.clientX, e.clientY);
+                });
+            }
+        } else if (category && category.dataset.id !== 'uncategorized') {
+            const categoryId = category.dataset.id;
+            const categoryData = db.worldBookCategories.find(cat => cat.id === categoryId);
+            if (categoryData) {
+                menuItems.push({
+                    label: `删除分类 "${categoryData.name}" 及其中所有条目`,
+                    danger: true,
+                    action: async () => {
+                        const booksInCategoryCount = db.worldBooks.filter(book => book.categoryId === categoryId).length;
+                        if (confirm(`此操作将永久删除分类“${categoryData.name}”以及其中的 ${booksInCategoryCount} 个条目，此操作不可撤销。\n确定要继续吗？`)) {
+                            const bufferKey = `pendingAction_deleteWorldBookCategory_${categoryId}`;
+                            try {
+                                localStorage.setItem(bufferKey, 'true');
+                                db.worldBooks = db.worldBooks.filter(book => book.categoryId !== categoryId);
+                                db.worldBookCategories = db.worldBookCategories.filter(cat => cat.id !== categoryId);
+                                await dataStorage.saveData('worldBooks_data', db.worldBooks);
+                                let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+                                baseData.worldBookCategories = db.worldBookCategories;
+                                await dataStorage.saveData('章鱼喷墨机', baseData);
+                                localStorage.removeItem(bufferKey);
+                                renderWorldBookList();
+                                showToast(`分类“${categoryData.name}”及其内容已删除`);
+                            } catch (error) {
+                                showToast('删除失败，请刷新重试');
+                                console.error("删除世界书分类失败:", error);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        if (menuItems.length > 0) {
+            createContextMenu(menuItems, clientX, clientY);
+        }
+    };
+
+    let longPressTimer;
+    worldBookListContainer.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        handleLongPress(e.target, e.clientX, e.clientY);
+    });
+    worldBookListContainer.addEventListener('touchstart', (e) => {
+        longPressTimer = setTimeout(() => {
+            const touch = e.touches[0];
+            handleLongPress(e.target, touch.clientX, touch.clientY);
         }, 500);
     });
-// ▲▲▲ 替换结束 ▲▲▲
-
-    worldBookListContainer.addEventListener('mouseup', () => clearTimeout(longPressTimer));
-    worldBookListContainer.addEventListener('mouseleave', () => clearTimeout(longPressTimer));
+    worldBookListContainer.addEventListener('touchend', () => clearTimeout(longPressTimer));
+    worldBookListContainer.addEventListener('touchmove', () => clearTimeout(longPressTimer));
 }
 // ▲▲▲ 替换结束 ▲▲▲
         function renderWorldBookList() {
@@ -19628,6 +19630,8 @@ function loadSettingsToSidebar() {
             document.getElementById('setting-share-stickers').checked = e.shareStickers || false;
         };
     }
+    
+    document.getElementById('setting-share-stickers').checked = e.shareStickers || false;
            // ... 在 proactiveToggle.onchange = ... 的后面添加
 
 // 加载线下模式设置
@@ -34591,6 +34595,8 @@ fileInput.addEventListener('change', async (e)=>{
         <!-- 更新日志内容区域 -->
         <div id="update-content" style="max-height: 40vh; overflow-y: auto; background-color: #f9f9f9; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px;">
             <ul>
+            <li><strong>修复</strong>：修复了世界书导入逻辑，现在不会错误地将世界书导进渲染器里了，也会显示正确的条目名字</li>
+            <li><strong>修复</strong>：长按删除世界书条目</li>
             <li><strong>新增</strong>：自动修复格式错误。在“查看ai返回内容”里新增了自动修复格式的功能。一般一次只显示一条消息就是掉格式了，现在不用一条一条自己改了</li>
                 <li><strong>修复</strong>：无法滑动到第二页的问题(应该已经OK了要是还有bug就告诉我是什么浏览器，什么手机)</li>
                 <li><strong>新增</strong>：查看ai原始返回内容的功能，要是发现角色只发了表情包，就长按聊天界面打开查看ai返回的内容，大概率是掉格式了，手动修改一下，要是一直有掉格式的问题，用括号大法鞭打一下ai！</li>
@@ -34694,7 +34700,7 @@ fileInput.addEventListener('change', async (e)=>{
         // ==========================================================
         // == 核心配置：每次更新时，修改这里的版本号即可让弹窗重新出现 ==
         // ==========================================================
-        const UPDATE_VERSION = '1.0.8'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
+        const UPDATE_VERSION = '1.0.9'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
         
         const STORAGE_KEY = `updatePopupDismissed_v${UPDATE_VERSION}`;
 
