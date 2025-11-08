@@ -15048,14 +15048,72 @@ async function saveAndRefreshAiResponse() {
     }
 }
 // ▲▲▲ 替换结束 ▲▲▲
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 setupAiResponseViewer 函数 ▼▼▼
 /**
- * Initializes event listeners for the AI Response Viewer modal.
+ * [V2.0 | 集成自动修复功能] Initializes event listeners for the AI Response Viewer modal.
  */
 function setupAiResponseViewer() {
+    const modal = document.getElementById('ai-response-viewer-modal');
     const form = document.getElementById('ai-response-edit-form');
     const cancelBtn = document.getElementById('cancel-ai-response-edit-btn');
-    const modal = document.getElementById('ai-response-viewer-modal');
-    
+    const autoFixBtn = document.getElementById('auto-fix-ai-response-btn'); // 获取新按钮
+    const textarea = document.getElementById('ai-raw-content-textarea');
+
+    /**
+     * 【全新函数】执行自动修复逻辑
+     */
+    const autoFixResponseFormat = () => {
+        let text = textarea.value;
+        if (!text.trim()) {
+            showToast('内容为空，无需修复');
+            return;
+        }
+
+        let changesMade = []; // 用于记录修复了哪些问题
+
+        // --- 修复逻辑 1: 处理 <ai_response> 标签 ---
+        const originalText = text;
+
+        // a. 移除所有 <ai_response> 和 </ai_response> 标签，无论它们有多少
+        let cleanedText = text.replace(/<\/?ai_response>/g, '').trim();
+
+        // b. 在清理后的文本前后包裹上正确的标签
+        let fixedText = `<ai_response>\n${cleanedText}\n</ai_response>`;
+
+        if (fixedText !== originalText) {
+             changesMade.push('规范了<ai_response>标签');
+        }
+        
+        // --- 修复逻辑 2: 为每个 [...] 指令添加换行 ---
+        // 我们只在 <ai_response> 内部进行这个操作
+        const contentInsideTags = fixedText.substring(fixedText.indexOf('>') + 1, fixedText.lastIndexOf('<')).trim();
+        
+        // 使用正则表达式匹配所有 [...] 结构，并在它们前面（如果需要）添加换行符
+        // `(?!^)` 确保不在文本的最开始添加换行
+        let contentWithNewlines = contentInsideTags.replace(/(?!^)(\[[\s\S]*?\])/g, '\n$1');
+
+        if (contentWithNewlines !== contentInsideTags) {
+            changesMade.push('为指令添加了换行');
+        }
+
+        // 重新组合最终的文本
+        const finalText = `<ai_response>\n${contentWithNewlines}\n</ai_response>`;
+        
+        // 将修复后的文本写回输入框
+        textarea.value = finalText;
+
+        // 根据修复情况给出反馈
+        if (changesMade.length > 0) {
+            showToast(`自动修复完成：${changesMade.join('，')}。`);
+        } else {
+            showToast('未检测到可修复的格式问题。');
+        }
+    };
+
+    // 为新按钮绑定点击事件
+    autoFixBtn.addEventListener('click', autoFixResponseFormat);
+
+    // 其他事件监听器保持不变
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         saveAndRefreshAiResponse();
@@ -15071,6 +15129,7 @@ function setupAiResponseViewer() {
         }
     });
 }
+// ▲▲▲ 替换结束 ▲▲▲
 /**
  * Sets up event listeners for the new Format Reference modal.
  */
@@ -34531,6 +34590,7 @@ fileInput.addEventListener('change', async (e)=>{
         <!-- 更新日志内容区域 -->
         <div id="update-content" style="max-height: 40vh; overflow-y: auto; background-color: #f9f9f9; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px;">
             <ul>
+            <li><strong>新增</strong>：自动修复格式错误。在“查看ai返回内容”里新增了自动修复格式的功能。一般一次只显示一条消息就是掉格式了，现在不用一条一条自己改了</li>
                 <li><strong>修复</strong>：无法滑动到第二页的问题(应该已经OK了要是还有bug就告诉我是什么浏览器，什么手机)</li>
                 <li><strong>新增</strong>：查看ai原始返回内容的功能，要是发现角色只发了表情包，就长按聊天界面打开查看ai返回的内容，大概率是掉格式了，手动修改一下，要是一直有掉格式的问题，用括号大法鞭打一下ai！</li>
             </ul>
@@ -34633,7 +34693,7 @@ fileInput.addEventListener('change', async (e)=>{
         // ==========================================================
         // == 核心配置：每次更新时，修改这里的版本号即可让弹窗重新出现 ==
         // ==========================================================
-        const UPDATE_VERSION = '1.0.7'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
+        const UPDATE_VERSION = '1.0.8'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
         
         const STORAGE_KEY = `updatePopupDismissed_v${UPDATE_VERSION}`;
 
@@ -35003,10 +35063,16 @@ fileInput.addEventListener('change', async (e)=>{
     </div>
 </div>
 <!-- === 新增结束 === -->
+<!-- ▼▼▼ 请用这个完整的代码块，替换掉旧的 id="ai-response-viewer-modal" 的 div ▼▼▼ -->
 <!-- START: AI Raw Response Viewer Modal -->
 <div id="ai-response-viewer-modal" class="modal-overlay">
     <div class="modal-window" style="max-height: 85vh; display: flex; flex-direction: column;">
-        <h3>查看/编辑AI原始返回内容</h3>
+        <!-- 【核心修改】将标题和新按钮放在一个flex容器中 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3>查看/编辑AI原始返回内容</h3>
+            <button class="btn btn-secondary btn-small" id="auto-fix-ai-response-btn">⚡ 自动修复</button>
+        </div>
+        
         <form id="ai-response-edit-form" style="overflow-y: auto; flex-grow: 1; padding: 5px;">
             <input type="hidden" id="editing-ai-message-id">
             <div class="form-group">
@@ -35021,6 +35087,7 @@ fileInput.addEventListener('change', async (e)=>{
     </div>
 </div>
 <!-- END: AI Raw Response Viewer Modal -->
+<!-- ▲▲▲ 替换结束 ▲▲▲ -->
 <!-- START: AI Format Reference Modal -->
 <div id="format-reference-modal" class="modal-overlay" style="z-index: 1002;">
     <div class="modal-window" style="max-height: 85vh; display: flex; flex-direction: column;">
