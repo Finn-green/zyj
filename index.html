@@ -15062,6 +15062,7 @@ function setupAiResponseViewer() {
     /**
      * 【全新函数】执行自动修复逻辑
      */
+// ▼▼▼ 在 setupAiResponseViewer 函数内部，用这个新版本替换旧的 autoFixResponseFormat 函数 ▼▼▼
     const autoFixResponseFormat = () => {
         let text = textarea.value;
         if (!text.trim()) {
@@ -15069,46 +15070,46 @@ function setupAiResponseViewer() {
             return;
         }
 
-        let changesMade = []; // 用于记录修复了哪些问题
+        let changesMade = [];
 
-        // --- 修复逻辑 1: 处理 <ai_response> 标签 ---
-        const originalText = text;
-
-        // a. 移除所有 <ai_response> 和 </ai_response> 标签，无论它们有多少
+        // --- 修复逻辑 1: 处理 <ai_response> 标签 (保持不变) ---
         let cleanedText = text.replace(/<\/?ai_response>/g, '').trim();
-
-        // b. 在清理后的文本前后包裹上正确的标签
         let fixedText = `<ai_response>\n${cleanedText}\n</ai_response>`;
-
-        if (fixedText !== originalText) {
-             changesMade.push('规范了<ai_response>标签');
+        if (fixedText !== text) {
+             if(!changesMade.includes('规范了<ai_response>标签')) changesMade.push('规范了<ai_response>标签');
         }
         
-        // --- 修复逻辑 2: 为每个 [...] 指令添加换行 ---
-        // 我们只在 <ai_response> 内部进行这个操作
+        // --- 修复逻辑 2: 为指令之间添加换行 (保持不变) ---
         const contentInsideTags = fixedText.substring(fixedText.indexOf('>') + 1, fixedText.lastIndexOf('<')).trim();
-        
-        // 使用正则表达式匹配所有 [...] 结构，并在它们前面（如果需要）添加换行符
-        // `(?!^)` 确保不在文本的最开始添加换行
         let contentWithNewlines = contentInsideTags.replace(/(?!^)(\[[\s\S]*?\])/g, '\n$1');
-
         if (contentWithNewlines !== contentInsideTags) {
-            changesMade.push('为指令添加了换行');
+            if(!changesMade.includes('为指令添加了换行')) changesMade.push('为指令添加了换行');
         }
 
-        // 重新组合最终的文本
-        const finalText = `<ai_response>\n${contentWithNewlines}\n</ai_response>`;
+        // --- 【核心新增逻辑 3】: 确保每个右中括号 ']' 后面都有一个换行符 ---
+        // 我们使用正则表达式查找所有不是紧跟着换行符的 ']'，并在它后面插入一个 '\n'
+        // 这可以处理 [...][...] 和 [...]文本... 的情况，同时避免在 [...]
+        // 这样的情况下添加多余的换行。
+        const originalContentForBracketFix = contentWithNewlines;
+        contentWithNewlines = contentWithNewlines.replace(/\](?![\n\r])/g, ']\n');
+
+        if (contentWithNewlines !== originalContentForBracketFix) {
+            if(!changesMade.includes('确保了指令后换行')) changesMade.push('确保了指令后换行');
+        }
+        // --- 新增逻辑结束 ---
         
-        // 将修复后的文本写回输入框
+        // 重新组合最终的文本
+        const finalText = `<ai_response>\n${contentWithNewlines.trim()}\n</ai_response>`;
+        
         textarea.value = finalText;
 
-        // 根据修复情况给出反馈
         if (changesMade.length > 0) {
             showToast(`自动修复完成：${changesMade.join('，')}。`);
         } else {
             showToast('未检测到可修复的格式问题。');
         }
     };
+// ▲▲▲ 替换结束 ▲▲▲
 
     // 为新按钮绑定点击事件
     autoFixBtn.addEventListener('click', autoFixResponseFormat);
