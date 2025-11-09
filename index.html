@@ -7519,24 +7519,25 @@ const locationBtn = document.getElementById('location-btn'),
         // --- Utility and Core Functions ---
         // --- 优化的数据存储系统 ---
         class OptimizedDataStorage {
+// ▼▼▼ 在 class OptimizedDataStorage 中，用这个新版本替换旧的 constructor ▼▼▼
             constructor() {
-                // 创建数据库
                 this.db = new Dexie('章鱼喷墨机DB_V2');
 
-                // 定义数据库结构
+                // 【核心修改】升级版本号到 2，并添加 image_storage 表
                 this.db.version(1).stores({
-                    // 基础数据存储
                     storage: 'key, value, timestamp',
-                    // 消息分块存储
                     messageChunks: 'id, chatId, chatType, chunkIndex, messages, timestamp',
-                    // 元数据存储
                     metadata: 'key, value, timestamp'
                 });
+                this.db.version(2).stores({
+                    image_storage: 'id' // 只需一个主键 'id'
+                });
 
-                // LRU缓存配置
                 this.cache = new Map();
-                this.maxCacheSize = 50; // 最大缓存50个数据块
-                this.chunkSize = 100; // 每个数据块100条消息
+                this.maxCacheSize = 50;
+                this.chunkSize = 100;
+
+
 
                 // 性能监控
                 this.performanceMetrics = {
@@ -7949,6 +7950,29 @@ const locationBtn = document.getElementById('location-btn'),
                 else if (sizeKB < 5000) sizeElement.className = 'metric-value warning';
                 else sizeElement.className = 'metric-value error';
             }
+// ▼▼▼ 在 class OptimizedDataStorage 内部，粘贴这两个新函数 ▼▼▼
+            // 新增：保存图片到专门的仓库
+            async saveImageToStorage(id, dataUrl) {
+                try {
+                    await this.db.image_storage.put({ id: id, data: dataUrl });
+                    return true;
+                } catch (error) {
+                    console.error('保存图片到仓库失败:', error);
+                    return false;
+                }
+            }
+
+            // 新增：从仓库中读取图片
+            async getImageFromStorage(id) {
+                try {
+                    const imageRecord = await this.db.image_storage.get(id);
+                    return imageRecord ? imageRecord.data : null;
+                } catch (error) {
+                    console.error('从仓库读取图片失败:', error);
+                    return null;
+                }
+            }
+// ▲▲▲ 粘贴结束 ▲▲▲
 
 // ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 migrateFromOldStorage 函数 ▼▼▼
 
@@ -9897,43 +9921,7 @@ const init = async () => {
     // --- 新增：聊天记录管理 ---
 
 
-    /**
-     * 在应用启动时，修剪所有过长的聊天记录
-     */
-    async function trimAllChatHistories() {
-        console.log("开始检查并修剪聊天记录...");
-        let trimmedCount = 0;
 
-        // 遍历所有私聊角色
-        for (const character of db.characters) {
-            if (character.history && character.history.length > MAX_HISTORY_PER_CHAT) {
-                const originalLength = character.history.length;
-                // 只保留最新的 MAX_HISTORY_PER_CHAT 条消息
-                character.history = character.history.slice(-MAX_HISTORY_PER_CHAT);
-                console.log(`已修剪角色 "${character.remarkName}" 的聊天记录，从 ${originalLength} 条减少到 ${character.history.length} 条。`);
-                trimmedCount++;
-            }
-        }
-
-        // 遍历所有群聊
-        for (const group of db.groups) {
-            if (group.history && group.history.length > MAX_HISTORY_PER_CHAT) {
-                const originalLength = group.history.length;
-                group.history = group.history.slice(-MAX_HISTORY_PER_CHAT);
-                console.log(`已修剪群聊 "${group.name}" 的聊天记录，从 ${originalLength} 条减少到 ${group.history.length} 条。`);
-                trimmedCount++;
-            }
-        }
-
-        // 如果有任何记录被修剪，则保存更改
-        if (trimmedCount > 0) {
-            scheduleSaveData();
-            showToast(`已自动清理 ${trimmedCount} 个过长的聊天记录，以优化性能。`);
-        } else {
-            console.log("所有聊天记录都在正常范围内，无需清理。");
-        }
-    }
-    // --- 新增结束 ---
 
 // ▲▲▲ 粘贴到这里结束 ▲▲▲		
         	// 在 init 函数的最顶部添加
@@ -9996,7 +9984,6 @@ if (db.characters.some(c => c.userDiaries && c.userDiaries.length > 0)) {
     console.log('用户日记数据已成功迁移到全局。');
     scheduleSaveData(); // 保存迁移后的结果
 }
-            await trimAllChatHistories(); 
             applyGlobalFont(db.fontUrl);
             setupCustomWidgetSystem();
             setupHomeScreen();
@@ -15562,6 +15549,21 @@ function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
                 messageArea.scrollTop = messageArea.scrollHeight - oldScrollHeight;
             }
             // ▲▲▲ 修改结束 ▲▲▲
+// ▼▼▼ 在 renderMessages 函数的末尾（}之前）添加这段代码 ▼▼▼
+            // 【新增】异步加载所有需要从仓库读取的图片
+            messageArea.querySelectorAll('img[data-image-id]').forEach(async (img) => {
+                const imageId = img.dataset.imageId;
+                if (imageId) {
+                    const imageData = await dataStorage.getImageFromStorage(imageId);
+                    if (imageData) {
+                        img.src = imageData;
+                        img.style.background = 'none';
+                    } else {
+                        img.alt = '图片加载失败';
+                    }
+                }
+            });
+// ▲▲▲ 添加结束 ▲▲▲
         }
         function loadMoreMessages() {
             currentPage++;
@@ -16258,9 +16260,10 @@ else if (message.paymentRequestData) {
                         </div>`;
 }else if (photoVideoMatch) {
             finalContentHTML = `<div class="pv-card"><div class="pv-card-content">${photoVideoMatch[1].trim()}</div><div class="pv-card-image-overlay" style="background-image: url('${isSent ? 'https://i.postimg.cc/L8NFrBrW/1752307494497.jpg' : 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg'}');"></div><div class="pv-card-footer"><svg viewBox="0 0 24 24"><path d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M10,9A1,1 0 0,1 11,10A1,1 0 0,1 10,11A1,1 0 0,1 9,10A1,1 0 0,1 10,9M8,17L11,13L13,15L17,10L20,14V17H8Z"></path></svg><span>照片/视频・点击查看</span></div>`;
-        } else if (imageRecogMatch || (message.parts && message.parts.some(p => p.type === 'image'))) {
-            const imageData = (message.parts && message.parts.find(p => p.type === 'image')) ? message.parts.find(p => p.type === 'image').data : content;
-            finalContentHTML = `<div class="image-bubble"><img src="${imageData}" alt="图片消息"></div>`;
+// ▼▼▼ 在 createMessageBubbleElement 中，找到并替换这个 else if 代码块 ▼▼▼
+        } else if (imageRecogMatch || (message.parts && message.parts.some(p => p.type === 'image')) || content.startsWith('[image:')) {
+            finalContentHTML = `<div class="image-bubble"><img src="" data-image-id="${content.replace(/\[image:|\]/g, '')}" alt="图片消息" style="background:#eee; min-height:50px;"></div>`;
+
         } else if (message.parts && message.parts[0] && message.parts[0].type === 'html') {
             finalContentHTML = `<div class="ai-generated-theater">${message.parts[0].text}</div>`;
         } else {
@@ -16660,23 +16663,30 @@ async function sendMessage() {
             renderChatList();
         }
 
-        async function sendSticker(sticker) {if (currentChatType === 'private') {
-    const character = db.characters.find(c => c.id === currentChatId);
-    if (character && character.isBlockedByAi) {
-        showToast('你已被对方拉黑');
-        return; // 阻止函数继续执行
-    }
-}
+// ▼▼▼ 用这个新版本替换旧的 sendImageForRecognition 函数 ▼▼▼
+        async function sendImageForRecognition(base64Data) {
+            if (currentChatType === 'private') {
+                const character = db.characters.find(c => c.id === currentChatId);
+                if (character && character.isBlockedByAi) {
+                    showToast('你已被对方拉黑');
+                    return;
+                }
+            }
+            if (!base64Data || isGenerating) return;
             const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
             const myName = (currentChatType === 'private') ? chat.myName : chat.me.nickname;
-            const messageContentForAI = `[${myName}的表情包：${sticker.name}]`;
+            
+            // 【核心改造】
+            const imageId = `img_${Date.now()}`;
+            await dataStorage.saveImageToStorage(imageId, base64Data); // 存入仓库
+            
+            const textPrompt = `[${myName}发来了一张图片：]`;
             const message = {
                 id: `msg_${Date.now()}`,
                 role: 'user',
-                content: messageContentForAI,
-                parts: [{type: 'text', text: messageContentForAI}],
+                content: `[image:${imageId}]`, // 聊天记录里只保存ID
+                parts: [{type: 'text', text: textPrompt}, {type: 'image', data: base64Data}], // 发给AI的 parts 依然包含完整数据
                 timestamp: Date.now(),
-                stickerData: sticker.data
             };
             if (currentChatType === 'group') {
                 message.senderId = 'user_me';
@@ -16685,8 +16695,8 @@ async function sendMessage() {
             addMessageBubble(message);
             scheduleSaveData();
             renderChatList();
-            stickerModal.classList.remove('visible');
         }
+// ▲▲▲ 替换结束 ▲▲▲
 
         async function sendMyVoiceMessage(text) {if (currentChatType === 'private') {
     const character = db.characters.find(c => c.id === currentChatId);
