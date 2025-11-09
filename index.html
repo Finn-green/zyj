@@ -18437,7 +18437,65 @@ async function processStream(response, chat, apiType) {
                 }
             });
         }
+// ▼▼▼ 请将这个全新的函数，粘贴到 setupStickerSystem 函数的正上方 ▼▼▼
 
+/**
+ * [最终修复版] 处理发送表情包的逻辑
+ * @param {object} sticker - 被点击的表情包对象 { id, name, data }
+ */
+async function sendSticker(sticker) {
+    // 安全检查，如果AI正在生成，则不发送
+    if (isGenerating) return;
+
+    // 获取当前聊天对象
+    const chat = (currentChatType === 'private') 
+        ? db.characters.find(c => c.id === currentChatId) 
+        : db.groups.find(g => g.id === currentChatId);
+    if (!chat) return;
+    
+    // 检查私聊中的拉黑状态
+    if (currentChatType === 'private' && chat.isBlockedByAi) {
+        showToast('你已被对方拉黑');
+        return;
+    }
+
+    const myName = (currentChatType === 'private') ? chat.myName : chat.me.nickname;
+    
+    // 1. 【核心修复】创建正确的消息内容和消息对象
+    //    a. content 字段只包含指令文本
+    const messageContent = `[${myName}的表情包：${sticker.name}]`;
+    
+    //    b. 关键！将表情包的图片数据(Base64)存放在 stickerData 属性中
+    const message = {
+        id: `msg_sticker_${Date.now()}`,
+        role: 'user',
+        content: messageContent,
+        parts: [{ type: 'text', text: messageContent }], // AI上下文也使用纯文本指令
+        timestamp: Date.now(),
+        stickerData: sticker.data // 这个属性是让渲染函数正确工作的关键
+    };
+
+    if (currentChatType === 'group') {
+        message.senderId = 'user_me';
+    }
+
+    // 2. 将消息添加到聊天记录
+    addMessageToChat(chat, message);
+    
+    // 3. 在界面上立即显示气泡
+    addMessageBubble(message);
+    
+    // 4. 使用全局的延迟保存，而不是在 addMessageToChat 内部强制保存
+    scheduleSaveData();
+
+    // 5. 更新聊天列表的预览
+    renderChatList();
+
+    // 6. 关闭表情包面板
+    stickerModal.classList.remove('visible');
+}
+
+// ▲▲▲ 粘贴结束 ▲▲▲
         async function setupStickerSystem() {
             stickerToggleBtn.addEventListener('click', () => {
                 stickerModal.classList.toggle('visible');
