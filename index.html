@@ -8062,10 +8062,10 @@ const locationBtn = document.getElementById('location-btn'),
         const dataStorage = new OptimizedDataStorage();
 
         // 兼容性适配器 - 保持原有API接口
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 saveData 函数 ▼▼▼
         const saveData = async (data) => {
             const dbData = data ? data : db;
 
-            // 修改：分离出所有需要独立保存的重要数据
             const { 
                 characters, 
                 groups, 
@@ -8076,14 +8076,12 @@ const locationBtn = document.getElementById('location-btn'),
                 wallpaper2,
                 aiSpaceWallpaper,
                 homeProfile,
-                // ... 你未来可能增加的其他顶层复杂数据
-                ...baseData // 剩余的简单数据
+                ...baseData 
             } = dbData;
 
-            // 保存剩余的基础数据
+            // 【核心修复】确保使用正确的数据库键
             await dataStorage.saveData('章鱼喷墨机', baseData);
 
-            // 新增：为每一项重要数据创建独立的保存通道
             if (worldBooks) await dataStorage.saveData('worldBooks_data', worldBooks);
             if (apiSettings) await dataStorage.saveData('apiSettings_data', apiSettings);
             if (customIcons) await dataStorage.saveData('customIcons_data', customIcons);
@@ -8092,39 +8090,34 @@ const locationBtn = document.getElementById('location-btn'),
             if (aiSpaceWallpaper) await dataStorage.saveData('aiSpaceWallpaper_data', aiSpaceWallpaper);
             if (homeProfile) await dataStorage.saveData('homeProfile_data', homeProfile);
 
-
-            // 分别保存角色和群组数据（包含消息）
             if (characters) {
                 for (const char of characters) {
-                    // 保存消息到分块存储
                     if (char.history && char.history.length > 0) {
                         await dataStorage.saveChatMessages(char.id, 'private', char.history);
                     }
-                    // 保存角色基础信息（不包含history）
                     const { history, ...charData } = char;
-                    charData.history = []; // 保持兼容性
+                    charData.history = [];
                     await dataStorage.saveData(`character_${char.id}`, charData);
                 }
             }
 
             if (groups) {
                 for (const group of groups) {
-                    // 保存消息到分块存储
                     if (group.history && group.history.length > 0) {
                         await dataStorage.saveChatMessages(group.id, 'group', group.history);
                     }
-                    // 保存群组基础信息（不包含history）
                     const { history, ...groupData } = group;
-                    groupData.history = []; // 保持兼容性
+                    groupData.history = [];
                     await dataStorage.saveData(`group_${group.id}`, groupData);
                 }
             }
 
             return Promise.resolve();
         };
-// ▼▼▼ 请用这个包含所有修复的、最新的完整函数，替换掉文件中旧的 loadData 函数 ▼▼▲▲
+// ▲▲▲ 替换结束 ▲▲▲
+// ▼▼▼ 请用这个完整的、无省略的、最终修正后的新函数，替换掉文件中旧的 loadData 函数 ▼▼▼
         const loadData = async () => {
-            // 阶段一：在加载主数据前，恢复所有独立的、非角色/群组绑定的数据
+            // 阶段一：在加载主数据前，恢复所有独立的、非角色/群组绑定的“救生艇”数据
             try {
                 // 恢复localStorage旧数据迁移标记
                 const lsMigrationFlag = await dataStorage.getData('localStorage_migration_complete');
@@ -8145,26 +8138,16 @@ const locationBtn = document.getElementById('location-btn'),
                 // 恢复壁纸
                 const mainWp = localStorage.getItem('pendingAction_updateWallpaper_main');
                 if (mainWp) { await dataStorage.saveData('wallpaper_data', mainWp); }
-                
                 const secondWp = localStorage.getItem('pendingAction_updateWallpaper_second');
                 if (secondWp) { await dataStorage.saveData('wallpaper2_data', secondWp); }
-
                 const aiWp = localStorage.getItem('pendingAction_updateWallpaper_ai');
                 if (aiWp) { await dataStorage.saveData('aiSpaceWallpaper_data', aiWp); }
-
-                // 恢复API设置
                 const apiSettings = localStorage.getItem('pendingAction_saveApiSettings');
                 if (apiSettings) { await dataStorage.saveData('apiSettings_data', JSON.parse(apiSettings)); }
-                
-                // 恢复自定义图标
                 const customIcons = localStorage.getItem('pendingAction_saveCustomIcons');
                 if (customIcons) { await dataStorage.saveData('customIcons_data', JSON.parse(customIcons)); }
-
-                // 恢复字体URL
                 const fontUrl = localStorage.getItem('pendingAction_saveFontUrl');
                 if (fontUrl) { await dataStorage.saveData('fontUrl_data', fontUrl); }
-
-                // 恢复主页信息
                 const homeProfile = localStorage.getItem('pendingAction_saveHomeProfile');
                 if (homeProfile) { await dataStorage.saveData('homeProfile_data', JSON.parse(homeProfile)); }
 
@@ -8236,13 +8219,11 @@ const locationBtn = document.getElementById('location-btn'),
                     await dataStorage.saveData('章鱼喷墨机', baseData);
                 }
 
-                // --- 在这里粘贴下面的新代码 ---
                 let mallDataUpdated = false;
                 if (!baseData.mallData) baseData.mallData = { cart: [], likedProducts: [], logistics: [], paymentHistory: [] };
                 if (!baseData.mallData.logistics) baseData.mallData.logistics = [];
                 if (!baseData.mallData.paymentHistory) baseData.mallData.paymentHistory = [];
 
-                // 恢复“添加物流”和“添加付款记录”
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
                     if (key.startsWith('pendingAction_addLogistics_')) {
@@ -8266,8 +8247,6 @@ const locationBtn = document.getElementById('location-btn'),
                         console.log('恢复删除付款记录操作');
                     }
                 }
-
-                // 恢复“添加购物车”
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
                     if (key.startsWith('pendingAction_addToCart_')) {
@@ -8279,8 +8258,6 @@ const locationBtn = document.getElementById('location-btn'),
                         }
                     }
                 }
-
-                // 恢复“删除购物车”
                 const itemsToDelete = localStorage.getItem('pendingAction_deleteCartItems');
                 if (itemsToDelete) {
                     const idsToDelete = new Set(JSON.parse(itemsToDelete));
@@ -8288,8 +8265,12 @@ const locationBtn = document.getElementById('location-btn'),
                     mallDataUpdated = true;
                     console.log('恢复删除购物车操作');
                 }
-
-                // 恢复“点赞列表更新”
+                const cartUpdate = localStorage.getItem('pendingAction_updateCart');
+                if (cartUpdate) {
+                    baseData.mallData.cart = JSON.parse(cartUpdate);
+                    mallDataUpdated = true;
+                    console.log('恢复购物车更新操作');
+                }
                 const likedProducts = localStorage.getItem('pendingAction_updateLikedProducts');
                 if (likedProducts) {
                     baseData.mallData.likedProducts = JSON.parse(likedProducts);
@@ -8300,17 +8281,13 @@ const locationBtn = document.getElementById('location-btn'),
                 if (mallDataUpdated) {
                     await dataStorage.saveData('章鱼喷墨机', baseData);
                 }
-                // --- 粘贴到这里结束 ---
 
-
-                
                 let worldBooks = await dataStorage.getData('worldBooks_data') || [];
                 let worldBooksUpdated = false;
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
                     const data = localStorage.getItem(key);
                     if (!data || !key.startsWith('pendingAction_')) continue;
-
                     if (key.startsWith('pendingAction_deleteWorldBook_')) {
                         const bookIdToDelete = key.replace('pendingAction_deleteWorldBook_', '');
                         worldBooks = worldBooks.filter(wb => wb.id !== bookIdToDelete);
@@ -8344,11 +8321,13 @@ const locationBtn = document.getElementById('location-btn'),
                 if (worldBooksUpdated) {
                     await dataStorage.saveData('worldBooks_data', worldBooks);
                 }
-
             } catch(e) { console.error("恢复localStorage事务(阶段一)失败:", e); }
             
+            // 阶段二：加载核心数据
             let loadedBaseData = await dataStorage.getData('章鱼喷墨机');
-            if (loadedBaseData) db = { ...db, ...loadedBaseData };
+            if (loadedBaseData) {
+                db = { ...db, ...loadedBaseData };
+            }
             db.worldBooks = await dataStorage.getData('worldBooks_data') || [];
             db.apiSettings = await dataStorage.getData('apiSettings_data') || {};
             db.customIcons = await dataStorage.getData('customIcons_data') || {};
@@ -8357,8 +8336,20 @@ const locationBtn = document.getElementById('location-btn'),
             db.aiSpaceWallpaper = await dataStorage.getData('aiSpaceWallpaper_data') || '';
             db.homeProfile = await dataStorage.getData('homeProfile_data') || { name: '点击设置昵称', signature: '点击设置个性签名', avatar: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg', heroBg: 'https://i.postimg.cc/wM57022X/image.png' };
             db.fontUrl = await dataStorage.getData('fontUrl_data') || '';
+            
+            // ▼▼▼ 【核心修复】为新用户初始化所有必需的数据结构 ▼▼▼
+            // 这个“安全网”确保了无论用户新旧，db对象在后续使用时都是结构完整的。
+            if (!db.forumData) db.forumData = {};
+            if (!db.forumSettings) db.forumSettings = { worldview: '', userPersona: '', selectedCharIds: [], allowNpcs: true, allowUnrelated: false, allowRomanticNpcs: false, worldBookIds: [] };
+            if (!db.mallData) db.mallData = { api: {}, products: [], customProducts: [], cart: [], likedProducts: [], logistics: [], paymentHistory: [], specialItemsEnabled: false };
+            if (!db.wallet) db.wallet = { balance: 0, passwordEnabled: false, password: null, transactions: [] };
             if (!db.avatarFrames) db.avatarFrames = [];
             if (db.uncategorizedCollapsed === undefined) db.uncategorizedCollapsed = false;
+            if (!db.userDiaries) db.userDiaries = [];
+            if (!db.worldBookCategories) db.worldBookCategories = [];
+            if (!db.renderers) db.renderers = [];
+            if (!db.rendererCategories) db.rendererCategories = [];
+            // ▲▲▲ 修复结束 ▲▲▲
 
             db.characters = [];
             db.groups = [];
@@ -8367,18 +8358,17 @@ const locationBtn = document.getElementById('location-btn'),
             const characterKeys = allKeys.filter(key => key.startsWith('character_'));
             const groupKeys = allKeys.filter(key => key.startsWith('group_'));
 
-            // 阶段二：恢复所有依赖于角色/群组数据的事务
+            // 阶段三：恢复角色和群组的“救生艇”数据
             for (const key of characterKeys) {
                 const charId = key.replace('character_', '');
-                const settingsData = localStorage.getItem(`pendingAction_updateSettings_private_${charId}`);
+                const settingsData = localStorage.getItem(`pendingAction_updateCharacter_${charId}`) || localStorage.getItem(`pendingAction_updateSettings_private_${charId}`);
                 const worldBookData = localStorage.getItem(`pendingAction_linkWorldBooks_private_${charId}`);
                 const soulBondData = localStorage.getItem(`pendingAction_saveSoulBondData_${charId}`);
                 const statusData = localStorage.getItem(`pendingAction_updateStatus_${charId}`);
                 const chatBgData = localStorage.getItem(`pendingAction_updateChatBg_private_${charId}`);
-                if (settingsData || worldBookData || soulBondData || statusData || chatBgData) {
-                    const charToUpdate = await dataStorage.getData(key);
+                 if (settingsData || worldBookData || soulBondData || statusData || chatBgData) {
+                    const charToUpdate = JSON.parse(settingsData) || await dataStorage.getData(key);
                     if (charToUpdate) {
-                        if (settingsData) Object.assign(charToUpdate, JSON.parse(settingsData));
                         if (worldBookData) charToUpdate.worldBookIds = JSON.parse(worldBookData);
                         if (soulBondData) charToUpdate.soulBondData = JSON.parse(soulBondData);
                         if (statusData) charToUpdate.status = statusData;
@@ -8403,15 +8393,22 @@ const locationBtn = document.getElementById('location-btn'),
                 }
             }
 
-            // 阶段三：加载角色和群组数据，并执行消息恢复
+            // 阶段四：加载最终的角色和群组数据（包含了所有恢复的更改）
             const characterPromises = characterKeys.map(async (key) => {
                 const charId = key.replace('character_', '');
-                const charData = await dataStorage.getData(key);
+                const bufferKey = `pendingAction_updateCharacter_${charId}`;
+                const lifeboatData = localStorage.getItem(bufferKey);
+                let charData;
+                if (lifeboatData) {
+                    console.log(`救援队：发现角色 ${charId} 的救生艇数据，正在恢复...`);
+                    charData = JSON.parse(lifeboatData);
+                } else {
+                    charData = await dataStorage.getData(key);
+                }
                 if (charData) {
                     let historyCleared = false;
                     try { if (localStorage.getItem(`pendingAction_clearHistory_private_${charId}`)) { await dataStorage.clearChatMessages(charId, 'private'); historyCleared = true; } } catch (e) {}
                     charData.history = historyCleared ? [] : await dataStorage.getChatMessages(charId, 'private');
-                    
                     try {
                         for (let i = 0; i < localStorage.length; i++) {
                             const lsKey = localStorage.key(i);
@@ -8428,7 +8425,6 @@ const locationBtn = document.getElementById('location-btn'),
                             }
                         }
                     } catch(e) {}
-
                     try {
                         let historyModified = false;
                         const addBufferKey = `pendingMessages_private_${charId}`; const pendingAdds = JSON.parse(localStorage.getItem(addBufferKey) || '[]');
@@ -8452,7 +8448,6 @@ const locationBtn = document.getElementById('location-btn'),
                     let historyCleared = false;
                     try { if (localStorage.getItem(`pendingAction_clearHistory_group_${groupId}`)) { await dataStorage.clearChatMessages(groupId, 'group'); historyCleared = true; } } catch(e) {}
                     groupData.history = historyCleared ? [] : await dataStorage.getChatMessages(groupId, 'group');
-                    
                     try {
                         for (let i = 0; i < localStorage.length; i++) {
                             const lsKey = localStorage.key(i);
@@ -8469,8 +8464,7 @@ const locationBtn = document.getElementById('location-btn'),
                             }
                         }
                     } catch(e) {}
-
-                     try {
+                    try {
                         let historyModified = false;
                         const addBufferKey = `pendingMessages_group_${groupId}`; const pendingAdds = JSON.parse(localStorage.getItem(addBufferKey) || '[]');
                         if (pendingAdds.length > 0) { const existingIds = new Set(groupData.history.map(m => m.id)); groupData.history.push(...pendingAdds.filter(m => !existingIds.has(m.id))); historyModified = true; }
@@ -8486,7 +8480,7 @@ const locationBtn = document.getElementById('location-btn'),
                 return null;
             });
             
-            // 阶段四：清理所有已处理的 pendingAction 标记
+            // 阶段五：清理所有已处理的“救生艇”
             for (let i = localStorage.length - 1; i >= 0; i--) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('pendingAction_')) {
@@ -8502,7 +8496,7 @@ const locationBtn = document.getElementById('location-btn'),
             db.characters = loadedCharacters.filter(char => char !== null);
             db.groups = loadedGroups.filter(group => group !== null);
 
-            console.log('数据加载完成');
+            console.log('数据加载完成，db对象结构已确保完整。');
             return Promise.resolve();
         };
 // ▲▲▲ 替换结束 ▲▲▲
@@ -11875,6 +11869,7 @@ async function notifyAiOfDelivery(messageId) {
 }
 
 // --- 新增：世界书分类功能 ---
+// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 setupWorldBookCategorySystem 函数 ▼▼▼
 function setupWorldBookCategorySystem() {
     const addCategoryBtn = document.getElementById('add-world-book-category-btn');
     const addCategoryModal = document.getElementById('add-category-modal');
@@ -11887,45 +11882,78 @@ function setupWorldBookCategorySystem() {
         addCategoryModal.classList.add('visible');
     });
 
+    // --- 【核心修复】重写表单提交事件 ---
     addCategoryForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = categoryNameInput.value.trim();
-        if (name) {
-            db.worldBookCategories.push({
-                id: `cat_${Date.now()}`,
-                name: name,
-                isCollapsed: false
-            });
-            await saveRendererData();
+        if (!name) return;
+
+        const newCategory = {
+            id: `cat_${Date.now()}`,
+            name: name,
+            isCollapsed: false
+        };
+
+        // --- “救生艇”改造开始 ---
+        const bufferKey = 'pendingAction_updateWorldBookCategories';
+
+        try {
+            // 1. 更新内存
+            db.worldBookCategories.push(newCategory);
+
+            // 2. 同步“救生艇”：将更新后的完整分类数组写入 localStorage
+            localStorage.setItem(bufferKey, JSON.stringify(db.worldBookCategories));
+            console.log(`救生艇：已备份世界书分类列表到 localStorage`);
+
+            // 3. 异步“货轮”：将包含新分类的主数据对象写入数据库
+            // (世界书分类是主db对象的一部分)
+            let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+            baseData.worldBookCategories = db.worldBookCategories;
+            await dataStorage.saveData('章鱼喷墨机', baseData);
+
+            // 4. 清理“救生艇”
+            localStorage.removeItem(bufferKey);
+            console.log(`货轮抵达：已清理 localStorage 的分类备份`);
+
+            // 5. 【修复UI反馈】成功保存后，更新界面并给出提示
             renderWorldBookList();
             showToast(`分类“${name}”已创建`);
             addCategoryModal.classList.remove('visible');
+
+        } catch (error) {
+            showToast('创建分类失败，请刷新重试');
+            console.error("创建世界书分类失败:", error);
+            // 如果保存失败，从内存中移除刚刚添加的分类，进行回滚
+            db.worldBookCategories = db.worldBookCategories.filter(cat => cat.id !== newCategory.id);
         }
+        // --- “救生艇”改造结束 ---
     });
 
-    // 修改：合并处理所有分类的点击事件
+    // 折叠功能的事件监听 (保持不变)
     worldBookListContainer.addEventListener('click', async (e) => {
         const categoryHeader = e.target.closest('.category-header');
         if (!categoryHeader) return;
+        
+        e.stopPropagation();
 
         const categoryWrapper = categoryHeader.parentElement;
         const categoryId = categoryWrapper.dataset.id;
         
         if (categoryId === 'uncategorized') {
-            // --- 这是处理“未分类”折叠的新逻辑 ---
             db.uncategorizedCollapsed = !db.uncategorizedCollapsed;
             categoryWrapper.classList.toggle('collapsed', db.uncategorizedCollapsed);
-            await saveRendererData();
         } else {
-            // 这是处理普通分类折叠的旧逻辑
             const category = db.worldBookCategories.find(cat => cat.id === categoryId);
             if (category) {
                 category.isCollapsed = !category.isCollapsed;
                 categoryWrapper.classList.toggle('collapsed', category.isCollapsed);
-                await saveRendererData();
             }
         }
+        
+        if(typeof saveRendererData === 'function') await saveRendererData();
+        else await scheduleSaveData();
     });
+    
     
     // --- 新增：统一处理长按/右键菜单 ---
 // ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 handleLongPress 函数 ▼▼▼
@@ -23338,7 +23366,7 @@ function setupSoulBondApp() {
     });
 
     // 保存自定义照片
-// ▼▼▼ 用这个代码块替换 setupSoulBondApp 函数中旧的 customPhotoForm 事件监听器 ▼▼▼
+// ▼▼▼ 在 setupSoulBondApp 函数中，用这个代码块替换旧的 customPhotoForm 事件监听器 ▼▼▼
     customPhotoForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -23361,19 +23389,20 @@ function setupSoulBondApp() {
         character.soulBondData = character.soulBondData || { photos: [], wishlist: [] };
         character.soulBondData.photos.unshift({ imageUrl, description });
 
-        // ▼▼▼ 核心修复：使用原子化保存，直接写入数据库 ▼▼▼
+        // ▼▼▼ 核心修复：使用 await flushSaveData() 强制立即保存 ▼▼▼
         try {
-            await dataStorage.saveData(`character_${character.id}`, character);
+            await flushSaveData(); // 强制立即执行完整的保存流程
             showToast('一张新的回忆照片已添加！');
+
+            // 在保存成功后，再更新UI
+            renderSoulBondScreen();
+            addCustomPhotoModal.classList.remove('visible');
+            
         } catch (error) {
             console.error("保存回忆照片失败:", error);
             showToast('保存失败，请查看控制台');
-            return; // 保存失败则不更新UI
         }
         // ▲▲▲ 修复结束 ▲▲▲
-        
-        renderSoulBondScreen();
-        addCustomPhotoModal.classList.remove('visible');
     });
 // ▲▲▲ 替换结束 ▲▲▲
 
@@ -23517,35 +23546,63 @@ function setupBondInvitationSystem() {
     // ▲▲▲ 核心修改结束 ▲▲▲
 }
 
+// ▼▼▼ 请用这个完整的、无省略的、最终修正后的新函数，替换掉文件中旧的 setupWishlistApp 函数 ▼▼▼
+
 function setupWishlistApp() {
+    // --- 【幂等保护】确保函数只执行一次 ---
+    if (window.wishlistAppInitialized) {
+        return;
+    }
+    window.wishlistAppInitialized = true;
+
+    // --- DOM 元素缓存 ---
     const wishEditorModal = document.getElementById('bond-wish-editor-modal');
     const wishForm = document.getElementById('bond-wish-form');
     const wishTextInput = document.getElementById('wish-text-input');
     const editingWishIdInput = document.getElementById('editing-wish-id');
     const editorTitle = document.getElementById('wish-editor-title');
-    const addWishFab = document.getElementById('add-wish-fab'); // 获取+号按钮
+    const addWishFab = document.getElementById('add-wish-fab');
+    const wishlistContainer = document.getElementById('bond-wishlist-container');
+    const refreshBtn = document.getElementById('refresh-wishlist-btn');
 
-    // 1. 监听“愿望清单”导航按钮的点击
+    // --- 辅助函数：打开编辑/新增弹窗 ---
+    function openWishEditor(wish = null) {
+        wishForm.reset();
+        if (wish) {
+            editorTitle.textContent = '编辑愿望';
+            editingWishIdInput.value = wish.id;
+            wishTextInput.value = wish.text;
+        } else {
+            editorTitle.textContent = '添加一个新愿望';
+            editingWishIdInput.value = '';
+        }
+        wishEditorModal.classList.add('visible');
+    }
+
+    // --- 事件绑定 ---
+
+    // 1. 监听“愿望清单”导航按钮的点击，打开清单页面
     document.querySelector('.bond-nav-btn[data-feature="wishlist"]').addEventListener('click', () => {
         const character = db.characters.find(c => c.id === document.getElementById('soul-bond-screen').dataset.characterId);
         if (!character) return;
         
-        if (character.soulBondData && character.soulBondData.wishlist) {
+        if (character.soulBondData && character.soulBondData.wishlist && character.soulBondData.wishlist.length > 0) {
             renderWishlist(character.soulBondData.wishlist);
         } else {
-            document.getElementById('bond-wishlist-container').innerHTML = `<p class="placeholder-text">点击右下角“+”添加第一个愿望，或点击右上角“刷新”让AI为你们推荐。</p>`;
+            wishlistContainer.innerHTML = `<p class="placeholder-text">点击右下角“+”添加第一个愿望，或点击右上角“刷新”让AI为你们推荐。</p>`;
         }
         switchScreen('bond-wishlist-screen');
     });
 
-    // 2. 监听“刷新”按钮（AI建议功能保持不变）
-    document.getElementById('refresh-wishlist-btn').addEventListener('click', async () => {
-        const character = db.characters.find(c => c.id === document.getElementById('soul-bond-screen').dataset.characterId);
+    // 2. 监听“刷新”按钮，让AI生成愿望清单并使用“救生艇”保存
+    refreshBtn.addEventListener('click', async () => {
+        const characterId = document.getElementById('soul-bond-screen').dataset.characterId;
+        const character = db.characters.find(c => c.id === characterId);
         if (!character) return;
+        
         if (!confirm('这会用AI生成的建议覆盖当前的愿望清单，确定吗？')) return;
 
-        const container = document.getElementById('bond-wishlist-container');
-        container.innerHTML = `<p class="placeholder-text">正在生成愿望清单...</p>`;
+        wishlistContainer.innerHTML = `<p class="placeholder-text">正在生成愿望清单...</p>`;
 
         try {
             const prompt = generateAiWishlistPrompt(character);
@@ -23554,24 +23611,38 @@ function setupWishlistApp() {
             
             const wishes = wishlistData.map(wish => ({ id: `wish_${Date.now()}_${Math.random()}`, text: wish, completed: false }));
 
+            // a. 更新内存
             character.soulBondData = character.soulBondData || { photos: [], wishlist: [] };
             character.soulBondData.wishlist = wishes;
-            scheduleSaveData();
 
+            // b. 【核心】创建并使用特定于角色的“救生艇”
+            const bufferKey = `pendingAction_updateCharacter_${character.id}`;
+            localStorage.setItem(bufferKey, JSON.stringify(character));
+            console.log(`救生艇：已备份角色(含新愿望清单)到 localStorage: ${character.remarkName}`);
+            
+            // c. 异步“货轮”：将完整的角色对象写入数据库
+            await dataStorage.saveData(`character_${character.id}`, character);
+            
+            // d. 清理“救生艇”
+            localStorage.removeItem(bufferKey);
+            console.log(`货轮抵达：已清理 localStorage 的角色备份`);
+            
+            showToast('AI生成的愿望清单已保存！');
             renderWishlist(wishes);
+
         } catch (error) {
             console.error("生成愿望清单失败:", error);
             showToast(`生成失败: ${error.message}`);
-            container.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
+            wishlistContainer.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
     });
 
-    // 3. 监听“+”浮动按钮，用于添加新愿望
+    // 3. 监听“+”浮动按钮
     if(addWishFab) {
         addWishFab.addEventListener('click', () => openWishEditor());
     }
     
-// ▼▼▼ 用这个代码块替换 setupWishlistApp 函数中旧的 wishForm 事件监听器 ▼▼▼
+    // 4. “保存愿望”的表单提交事件，使用“救生艇”保存
     wishForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
@@ -23586,6 +23657,11 @@ function setupWishlistApp() {
         const wishText = wishTextInput.value.trim();
         const editingId = editingWishIdInput.value;
 
+        if (!wishText) {
+            showToast('愿望内容不能为空');
+            return;
+        }
+
         character.soulBondData = character.soulBondData || { photos: [], wishlist: [] };
         
         if (editingId) {
@@ -23598,54 +23674,22 @@ function setupWishlistApp() {
                 completed: false
             });
         }
-
-        // ▼▼▼ 核心修复：使用原子化保存，直接写入数据库 ▼▼▼
+        
         try {
-            await dataStorage.saveData(`character_${character.id}`, character);
+            // 【核心】使用 flushSaveData() 强制立即保存
+            await flushSaveData();
             showToast('愿望已保存！');
+            
+            // 成功保存后，更新UI并关闭弹窗
+            renderWishlist(character.soulBondData.wishlist);
+            wishEditorModal.classList.remove('visible');
         } catch (error) {
             console.error("保存愿望失败:", error);
             showToast('保存失败，请查看控制台');
-            return; // 保存失败则不更新UI
-        }
-        // ▲▲▲ 修复结束 ▲▲▲
-
-        renderWishlist(character.soulBondData.wishlist);
-        wishEditorModal.classList.remove('visible');
-    });
-// ▲▲▲ 替换结束 ▲▲▲
-
-    // 5. 使用事件委托处理清单项的交互（完成、长按删除）
-    const wishlistContainer = document.getElementById('bond-wishlist-container');
-
-    wishlistContainer.addEventListener('click', async (e) => {
-        const wishItem = e.target.closest('.wish-item');
-        if (!wishItem) return;
-        
-        const wishCheckbox = e.target.closest('.wish-checkbox');
-        if (wishCheckbox) {
-            const character = db.characters.find(c => c.id === document.getElementById('soul-bond-screen').dataset.characterId);
-            if (!character || !character.soulBondData || !character.soulBondData.wishlist) return;
-
-            const wishId = wishCheckbox.dataset.id;
-            const wish = character.soulBondData.wishlist.find(w => w.id === wishId);
-            if (!wish) return;
-
-            wish.completed = wishCheckbox.checked;
-            scheduleSaveData();
-            wishItem.classList.toggle('completed', wish.completed);
-            showToast(wish.completed ? '一个愿望已达成！' : '愿望已重新开启');
-
-            if (wish.completed) {
-                const content = `[system: 你和 ${character.myName} 共同完成了愿望清单中的一项：“${wish.text}”。请在聊天中对此发表感想。]`;
-                const contextMessage = { id: `msg_wish_done_${Date.now()}`, role: 'user', content: content, parts: [{ type: 'text', text: content }], timestamp: Date.now() };
-                addMessageToChat(character,contextMessage);
-                scheduleSaveData();
-            }
         }
     });
 
-    // 6. 添加长按删除逻辑
+    // 5. 使用事件委托处理清单项的交互（完成、长按/右键删除、单击编辑）
     let longPressTimer;
     const handleLongPress = async (targetElement) => {
         const wishItem = targetElement.closest('.wish-item');
@@ -23659,37 +23703,56 @@ function setupWishlistApp() {
         
         if (wish && confirm(`确定要删除这个愿望吗？\n“${wish.text}”`)) {
             character.soulBondData.wishlist = character.soulBondData.wishlist.filter(w => w.id !== wishId);
-            scheduleSaveData();
+            await flushSaveData();
             renderWishlist(character.soulBondData.wishlist);
             showToast('愿望已删除');
         }
     };
+    
+    wishlistContainer.addEventListener('click', async (e) => {
+        const wishItem = e.target.closest('.wish-item');
+        if (!wishItem) return;
+        
+        const wishCheckbox = e.target.closest('.wish-checkbox');
+        if (wishCheckbox) {
+            // a. 处理勾选/取消勾选
+            const character = db.characters.find(c => c.id === document.getElementById('soul-bond-screen').dataset.characterId);
+            if (!character || !character.soulBondData || !character.soulBondData.wishlist) return;
 
-    wishlistContainer.addEventListener('touchstart', (e) => {
-        longPressTimer = setTimeout(() => handleLongPress(e.target), 500);
+            const wishId = wishCheckbox.dataset.id;
+            const wish = character.soulBondData.wishlist.find(w => w.id === wishId);
+            if (!wish) return;
+
+            wish.completed = wishCheckbox.checked;
+            scheduleSaveData(); // 勾选操作是低风险的，可以用延迟保存
+            wishItem.classList.toggle('completed', wish.completed);
+            showToast(wish.completed ? '一个愿望已达成！' : '愿望已重新开启');
+
+            if (wish.completed) {
+                const content = `[system: 你和 ${character.myName} 共同完成了愿望清单中的一项：“${wish.text}”。请在聊天中对此发表感想。]`;
+                const contextMessage = { id: `msg_wish_done_${Date.now()}`, role: 'user', content: content, parts: [{ type: 'text', text: content }], timestamp: Date.now() };
+                addMessageToChat(character,contextMessage);
+                scheduleSaveData();
+            }
+        } else {
+            // b. 处理单击愿望文本 -> 打开编辑器
+            const character = db.characters.find(c => c.id === document.getElementById('soul-bond-screen').dataset.characterId);
+            if (!character || !character.soulBondData || !character.soulBondData.wishlist) return;
+            const wishId = wishItem.querySelector('.wish-checkbox').dataset.id;
+            const wish = character.soulBondData.wishlist.find(w => w.id === wishId);
+            if(wish) {
+                openWishEditor(wish);
+            }
+        }
     });
+    
+    wishlistContainer.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => handleLongPress(e.target), 500); });
     wishlistContainer.addEventListener('touchend', () => clearTimeout(longPressTimer));
     wishlistContainer.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-    wishlistContainer.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        handleLongPress(e.target);
-    });
-
-
-    // 打开编辑/新增弹窗的辅助函数
-    function openWishEditor(wish = null) {
-        wishForm.reset();
-        if (wish) {
-            editorTitle.textContent = '编辑愿望';
-            editingWishIdInput.value = wish.id;
-            wishTextInput.value = wish.text;
-        } else {
-            editorTitle.textContent = '添加一个新愿望';
-            editingWishIdInput.value = '';
-        }
-        wishEditorModal.classList.add('visible');
-    }
+    wishlistContainer.addEventListener('contextmenu', (e) => { e.preventDefault(); handleLongPress(e.target); });
 }
+
+// ▲▲▲ 替换结束 ▲▲▲
 
 // 渲染愿望清单的函数（已移除编辑和删除按钮）
 function renderWishlist(wishes) {
@@ -34453,9 +34516,7 @@ fileInput.addEventListener('change', async (e)=>{
     </div>
 </div>
 <!-- END: 新增“想你啦”功能模块 -->
-	<!-- =============================================================== -->
-<!-- START: 心灵羁绊 - 番茄钟 V2.0 功能模块 -->
-<!-- =============================================================== -->
+
 
 <!-- =============================================================== -->
 <!-- START: 心灵羁绊 - 番茄钟 V2.1 功能模块 (替换旧版) -->
@@ -34595,10 +34656,11 @@ fileInput.addEventListener('change', async (e)=>{
         <!-- 更新日志内容区域 -->
         <div id="update-content" style="max-height: 40vh; overflow-y: auto; background-color: #f9f9f9; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px;">
             <ul>
+            <li><strong>修复</strong>：无法滑动到第二页的问题，我发现是没有旧数据的新用户就会无法滑动，因为我一直有旧数据所以没发现bug出现在这里，现在已经修好了！(｡ì _ í｡)</li>
             <li><strong>修复</strong>：修复了世界书导入逻辑，现在不会错误地将世界书导进渲染器里了，也会显示正确的条目名字</li>
             <li><strong>修复</strong>：长按删除世界书条目</li>
             <li><strong>新增</strong>：自动修复格式错误。在“查看ai返回内容”里新增了自动修复格式的功能。一般一次只显示一条消息就是掉格式了，现在不用一条一条自己改了</li>
-                <li><strong>修复</strong>：无法滑动到第二页的问题(应该已经OK了要是还有bug就告诉我是什么浏览器，什么手机)</li>
+
                 <li><strong>新增</strong>：查看ai原始返回内容的功能，要是发现角色只发了表情包，就长按聊天界面打开查看ai返回的内容，大概率是掉格式了，手动修改一下，要是一直有掉格式的问题，用括号大法鞭打一下ai！</li>
             </ul>
         </div>
@@ -34700,7 +34762,7 @@ fileInput.addEventListener('change', async (e)=>{
         // ==========================================================
         // == 核心配置：每次更新时，修改这里的版本号即可让弹窗重新出现 ==
         // ==========================================================
-        const UPDATE_VERSION = '1.0.9'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
+        const UPDATE_VERSION = '1.1.0'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
         
         const STORAGE_KEY = `updatePopupDismissed_v${UPDATE_VERSION}`;
 
