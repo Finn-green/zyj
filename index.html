@@ -8228,6 +8228,12 @@ const locationBtn = document.getElementById('location-btn'),
                     }
                     baseDataUpdated = true;
                 }
+const myStickers = localStorage.getItem('pendingAction_updateMyStickers');
+                if (myStickers) {
+                    baseData.myStickers = JSON.parse(myStickers);
+                    baseDataUpdated = true;
+                    console.log('恢复表情包更新操作');
+                }
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
                     if (key.startsWith('pendingAction_deleteWorldBookCategory_')) {
@@ -9035,6 +9041,7 @@ function setupBatchStickerUpload() {
         showToast(`已成功加载 ${tempStickerData.length} 张图片，请为它们命名。`);
     });
     
+// ▼▼▼ 在 setupBatchStickerUpload 函数中，用这个代码块替换旧的 saveBtn 事件监听器 ▼▼▼
     saveBtn.addEventListener('click', async () => {
         if (tempStickerData.length === 0) {
             showToast('没有可保存的表情包');
@@ -9043,20 +9050,46 @@ function setupBatchStickerUpload() {
 
         const names = namesInput.value.split(',').map(n => n.trim());
         
-        tempStickerData.forEach((sticker, index) => {
-            const newSticker = {
-                id: `sticker_${Date.now()}_${index}`,
-                name: names[index] || `表情包${db.myStickers.length + index + 1}`,
-                data: sticker.data
-            };
-            db.myStickers.push(newSticker);
-        });
+        // --- “救生艇”改造开始 ---
+        const bufferKey = 'pendingAction_updateMyStickers';
 
-        scheduleSaveData();
-        modal.classList.remove('visible');
-        renderStickerGrid();
-        showToast(`成功添加了 ${tempStickerData.length} 个表情包！`);
+        try {
+            // 1. 更新内存
+            tempStickerData.forEach((sticker, index) => {
+                const newSticker = {
+                    id: `sticker_${Date.now()}_${index}`,
+                    name: names[index] || `表情包${db.myStickers.length + index + 1}`,
+                    data: sticker.data
+                };
+                db.myStickers.push(newSticker);
+            });
+
+            // 2. 同步“救生艇”：将更新后的完整表情包数组写入 localStorage
+            localStorage.setItem(bufferKey, JSON.stringify(db.myStickers));
+            console.log(`救生艇：已备份批量添加的表情包列表到 localStorage`);
+
+            // 3. 异步“货轮”：将包含新表情包的主数据对象写入数据库
+            let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+            baseData.myStickers = db.myStickers;
+            await dataStorage.saveData('章鱼喷墨机', baseData);
+
+            // 4. 清理“救生艇”
+            localStorage.removeItem(bufferKey);
+            console.log(`货轮抵达：已清理 localStorage 的批量表情包备份`);
+
+            // 5. 更新UI
+            modal.classList.remove('visible');
+            renderStickerGrid();
+            showToast(`成功添加了 ${tempStickerData.length} 个表情包！`);
+
+        } catch (error) {
+            showToast('批量保存表情包失败，请刷新重试');
+            console.error("批量保存表情包失败:", error);
+            // 可以在这里添加回滚逻辑，但由于影响不大，暂时省略
+        }
+        // --- “救生艇”改造结束 ---
     });
+// ▲▲▲ 替换结束 ▲▲▲
 }
 // 
 // ===============================================================
@@ -18511,30 +18544,58 @@ async function sendSticker(sticker) {
                 stickerUrlInput.disabled = false;
                 addStickerModal.classList.add('visible');
             });
+// ▼▼▼ 在 setupStickerSystem 函数中，用这个代码块替换旧的 addStickerForm 事件监听器 ▼▼▼
             addStickerForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const name = stickerNameInput.value.trim();
                 const id = stickerEditIdInput.value;
                 const previewImg = stickerPreview.querySelector('img');
                 const data = previewImg ? previewImg.src : null;
+                
                 if (!name || !data) {
                     return showToast('请填写表情名称并提供图片');
                 }
-                const stickerData = {name, data};
-                if (id) {
-                    const index = db.myStickers.findIndex(s => s.id === id);
-                    if (index > -1) {
-                        db.myStickers[index] = {...db.myStickers[index], ...stickerData};
+
+                // --- “救生艇”改造开始 ---
+                const bufferKey = 'pendingAction_updateMyStickers';
+
+                try {
+                    // 1. 更新内存
+                    if (id) { // 编辑现有表情
+                        const index = db.myStickers.findIndex(s => s.id === id);
+                        if (index > -1) {
+                            db.myStickers[index] = { ...db.myStickers[index], name, data };
+                        }
+                    } else { // 添加新表情
+                        const newSticker = { id: `sticker_${Date.now()}`, name, data };
+                        db.myStickers.push(newSticker);
                     }
-                } else {
-                    stickerData.id = `sticker_${Date.now()}`;
-                    db.myStickers.push(stickerData);
+
+                    // 2. 同步“救生艇”：将更新后的完整表情包数组写入 localStorage
+                    localStorage.setItem(bufferKey, JSON.stringify(db.myStickers));
+                    console.log(`救生艇：已备份表情包列表到 localStorage`);
+
+                    // 3. 异步“货轮”：表情包是主db对象的一部分
+                    let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+                    baseData.myStickers = db.myStickers;
+                    await dataStorage.saveData('章鱼喷墨机', baseData);
+
+                    // 4. 清理“救生艇”
+                    localStorage.removeItem(bufferKey);
+                    console.log(`货轮抵达：已清理 localStorage 的表情包备份`);
+
+                    // 5. 更新UI
+                    renderStickerGrid();
+                    addStickerModal.classList.remove('visible');
+                    showToast('表情包已保存！');
+
+                } catch (error) {
+                    showToast('表情包保存失败，请刷新重试');
+                    console.error("保存表情包失败:", error);
                 }
-                scheduleSaveData();
-                renderStickerGrid();
-                addStickerModal.classList.remove('visible');
-                showToast('表情包已保存');
+                // --- “救生艇”改造结束 ---
             });
+// ▲▲▲ 替换结束 ▲▲▲
             stickerUrlInput.addEventListener('input', (e) => {
                 stickerPreview.innerHTML = `<img src="${e.target.value}" alt="预览">`;
                 stickerFileUpload.value = '';
@@ -18573,20 +18634,50 @@ async function sendSticker(sticker) {
                 stickerActionSheet.classList.remove('visible');
                 currentStickerActionTarget = null;
             });
+// ▼▼▼ 在 setupStickerSystem 函数中，用这个代码块替换旧的 deleteStickerBtn 事件监听器 ▼▼▼
             deleteStickerBtn.addEventListener('click', async () => {
                 if (!currentStickerActionTarget) return;
+                
                 const sticker = db.myStickers.find(s => s.id === currentStickerActionTarget);
                 if (sticker) {
                     if (confirm(`确定要删除表情“${sticker.name}”吗？`)) {
-                        db.myStickers = db.myStickers.filter(s => s.id !== currentStickerActionTarget);
-                        scheduleSaveData();
-                        renderStickerGrid();
-                        showToast('表情已删除');
+                        
+                        // --- “救生艇”改造开始 ---
+                        const bufferKey = 'pendingAction_updateMyStickers';
+
+                        try {
+                            // 1. 更新内存
+                            db.myStickers = db.myStickers.filter(s => s.id !== currentStickerActionTarget);
+
+                            // 2. 同步“救生艇”
+                            localStorage.setItem(bufferKey, JSON.stringify(db.myStickers));
+                            console.log(`救生艇：已备份删除操作后的表情包列表`);
+
+                            // 3. 异步“货轮”
+                            let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+                            baseData.myStickers = db.myStickers;
+                            await dataStorage.saveData('章鱼喷墨机', baseData);
+
+                            // 4. 清理“救生艇”
+                            localStorage.removeItem(bufferKey);
+                            console.log(`货轮抵达：已清理 localStorage 的表情包备份`);
+
+                            // 5. 更新UI
+                            renderStickerGrid();
+                            showToast('表情已删除');
+
+                        } catch (error) {
+                            showToast('删除表情包失败，请刷新重试');
+                            console.error("删除表情包失败:", error);
+                        }
+                        // --- “救生艇”改造结束 ---
                     }
                 }
+                
                 stickerActionSheet.classList.remove('visible');
                 currentStickerActionTarget = null;
             });
+// ▲▲▲ 替换结束 ▲▲▲
         }
 
         function renderStickerGrid() {
@@ -20148,30 +20239,58 @@ function setupStickerSystem() {
                 stickerUrlInput.disabled = false;
                 addStickerModal.classList.add('visible');
             });
+// ▼▼▼ 在 setupStickerSystem 函数中，用这个代码块替换旧的 addStickerForm 事件监听器 ▼▼▼
             addStickerForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const name = stickerNameInput.value.trim();
                 const id = stickerEditIdInput.value;
                 const previewImg = stickerPreview.querySelector('img');
                 const data = previewImg ? previewImg.src : null;
+                
                 if (!name || !data) {
                     return showToast('请填写表情名称并提供图片');
                 }
-                const stickerData = {name, data};
-                if (id) {
-                    const index = db.myStickers.findIndex(s => s.id === id);
-                    if (index > -1) {
-                        db.myStickers[index] = {...db.myStickers[index], ...stickerData};
+
+                // --- “救生艇”改造开始 ---
+                const bufferKey = 'pendingAction_updateMyStickers';
+
+                try {
+                    // 1. 更新内存
+                    if (id) { // 编辑现有表情
+                        const index = db.myStickers.findIndex(s => s.id === id);
+                        if (index > -1) {
+                            db.myStickers[index] = { ...db.myStickers[index], name, data };
+                        }
+                    } else { // 添加新表情
+                        const newSticker = { id: `sticker_${Date.now()}`, name, data };
+                        db.myStickers.push(newSticker);
                     }
-                } else {
-                    stickerData.id = `sticker_${Date.now()}`;
-                    db.myStickers.push(stickerData);
+
+                    // 2. 同步“救生艇”：将更新后的完整表情包数组写入 localStorage
+                    localStorage.setItem(bufferKey, JSON.stringify(db.myStickers));
+                    console.log(`救生艇：已备份表情包列表到 localStorage`);
+
+                    // 3. 异步“货轮”：表情包是主db对象的一部分
+                    let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+                    baseData.myStickers = db.myStickers;
+                    await dataStorage.saveData('章鱼喷墨机', baseData);
+
+                    // 4. 清理“救生艇”
+                    localStorage.removeItem(bufferKey);
+                    console.log(`货轮抵达：已清理 localStorage 的表情包备份`);
+
+                    // 5. 更新UI
+                    renderStickerGrid();
+                    addStickerModal.classList.remove('visible');
+                    showToast('表情包已保存！');
+
+                } catch (error) {
+                    showToast('表情包保存失败，请刷新重试');
+                    console.error("保存表情包失败:", error);
                 }
-                scheduleSaveData();
-                renderStickerGrid();
-                addStickerModal.classList.remove('visible');
-                showToast('表情包已保存');
+                // --- “救生艇”改造结束 ---
             });
+// ▲▲▲ 替换结束 ▲▲▲
             stickerUrlInput.addEventListener('input', (e) => {
                 stickerPreview.innerHTML = `<img src="${e.target.value}" alt="预览">`;
                 stickerFileUpload.value = '';
@@ -20210,20 +20329,50 @@ function setupStickerSystem() {
                 stickerActionSheet.classList.remove('visible');
                 currentStickerActionTarget = null;
             });
+// ▼▼▼ 在 setupStickerSystem 函数中，用这个代码块替换旧的 deleteStickerBtn 事件监听器 ▼▼▼
             deleteStickerBtn.addEventListener('click', async () => {
                 if (!currentStickerActionTarget) return;
+                
                 const sticker = db.myStickers.find(s => s.id === currentStickerActionTarget);
                 if (sticker) {
                     if (confirm(`确定要删除表情“${sticker.name}”吗？`)) {
-                        db.myStickers = db.myStickers.filter(s => s.id !== currentStickerActionTarget);
-                        scheduleSaveData();
-                        renderStickerGrid();
-                        showToast('表情已删除');
+                        
+                        // --- “救生艇”改造开始 ---
+                        const bufferKey = 'pendingAction_updateMyStickers';
+
+                        try {
+                            // 1. 更新内存
+                            db.myStickers = db.myStickers.filter(s => s.id !== currentStickerActionTarget);
+
+                            // 2. 同步“救生艇”
+                            localStorage.setItem(bufferKey, JSON.stringify(db.myStickers));
+                            console.log(`救生艇：已备份删除操作后的表情包列表`);
+
+                            // 3. 异步“货轮”
+                            let baseData = await dataStorage.getData('章鱼喷墨机') || {};
+                            baseData.myStickers = db.myStickers;
+                            await dataStorage.saveData('章鱼喷墨机', baseData);
+
+                            // 4. 清理“救生艇”
+                            localStorage.removeItem(bufferKey);
+                            console.log(`货轮抵达：已清理 localStorage 的表情包备份`);
+
+                            // 5. 更新UI
+                            renderStickerGrid();
+                            showToast('表情已删除');
+
+                        } catch (error) {
+                            showToast('删除表情包失败，请刷新重试');
+                            console.error("删除表情包失败:", error);
+                        }
+                        // --- “救生艇”改造结束 ---
                     }
                 }
+                
                 stickerActionSheet.classList.remove('visible');
                 currentStickerActionTarget = null;
             });
+// ▲▲▲ 替换结束 ▲▲▲
 
     // ▼▼▼ 在 setupStickerSystem 函数的末尾添加 ▼▼▼
 
@@ -34853,6 +35002,7 @@ fileInput.addEventListener('change', async (e)=>{
         <!-- 更新日志内容区域 -->
         <div id="update-content" style="max-height: 40vh; overflow-y: auto; background-color: #f9f9f9; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px;">
             <ul>
+            <li><strong>修复</strong>：表情包添加后刷新页面消失的问题</li>
             <li><strong>修复</strong>：无法滑动到第二页的问题，我发现是没有旧数据的新用户就会无法滑动，因为我一直有旧数据所以没发现bug出现在这里，现在已经修好了！(｡ì _ í｡)</li>
             <li><strong>修复</strong>：修复了世界书导入逻辑，现在不会错误地将世界书导进渲染器里了，也会显示正确的条目名字</li>
             <li><strong>修复</strong>：长按删除世界书条目</li>
@@ -34959,7 +35109,7 @@ fileInput.addEventListener('change', async (e)=>{
         // ==========================================================
         // == 核心配置：每次更新时，修改这里的版本号即可让弹窗重新出现 ==
         // ==========================================================
-        const UPDATE_VERSION = '1.1.0'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
+        const UPDATE_VERSION = '1.1.1'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
         
         const STORAGE_KEY = `updatePopupDismissed_v${UPDATE_VERSION}`;
 
