@@ -8086,47 +8086,61 @@ const locationBtn = document.getElementById('location-btn'),
         const dataStorage = new OptimizedDataStorage();
 
         // 兼容性适配器 - 保持原有API接口
-// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 saveData 函数 ▼▼▼
+// ▼▼▼ 请用这个全新的、完整的、无任何省略的 saveData 函数，替换掉文件中旧的同名函数 ▼▼▼
+
+        /**
+         * [V4.0 | 最终修复版] 将内存中的db数据可靠地、分类地保存到数据库。
+         * 这个版本明确地定义了哪些数据属于“主数据”，避免了因解构不当导致的数据丢失。
+         */
         const saveData = async (data) => {
             const dbData = data ? data : db;
 
-            const { 
-                characters, 
-                groups, 
-                worldBooks, 
-                apiSettings,
-                customIcons,
-                wallpaper,
-                wallpaper2,
-                aiSpaceWallpaper,
-                homeProfile,
-                ...baseData 
-            } = dbData;
+            // --- 1. 定义哪些属性属于“主数据”，应该被保存在 '章鱼喷墨机' 中 ---
+            const baseDataKeys = [
+                'apiSettings', 'myStickers', 'homeScreenMode', 'fontUrl', 'customIcons',
+                'customWidgets', 'playlist', 'musicPlayerSettings', 'renderers', 'rendererCategories',
+                'userDiaries', 'worldBookCategories', 'uncategorizedCollapsed', 'useWechatLayout',
+                'globalCustomCss', 'forumData', 'forumSettings', 'wallet', 'mallData',
+                'avatarFrames'
+            ];
 
-            // 【核心修复】确保使用正确的数据库键
-            await dataStorage.saveData('章鱼喷墨机', baseData);
+            const baseData = {};
+            baseDataKeys.forEach(key => {
+                if (dbData.hasOwnProperty(key)) {
+                    baseData[key] = dbData[key];
+                }
+            });
 
-            if (worldBooks) await dataStorage.saveData('worldBooks_data', worldBooks);
-            if (apiSettings) await dataStorage.saveData('apiSettings_data', apiSettings);
-            if (customIcons) await dataStorage.saveData('customIcons_data', customIcons);
-            if (wallpaper) await dataStorage.saveData('wallpaper_data', wallpaper);
-            if (wallpaper2) await dataStorage.saveData('wallpaper2_data', wallpaper2);
-            if (aiSpaceWallpaper) await dataStorage.saveData('aiSpaceWallpaper_data', aiSpaceWallpaper);
-            if (homeProfile) await dataStorage.saveData('homeProfile_data', homeProfile);
+            // --- 2. 明确地分离出需要独立存储的数据 ---
+            const charactersToSave = dbData.characters || [];
+            const groupsToSave = dbData.groups || [];
+            const worldBooksToSave = dbData.worldBooks || [];
+            // ... 其他独立存储的数据 ...
+            const wallpaperToSave = dbData.wallpaper;
+            const wallpaper2ToSave = dbData.wallpaper2;
+            const aiSpaceWallpaperToSave = dbData.aiSpaceWallpaper;
+            const homeProfileToSave = dbData.homeProfile;
 
-            if (characters) {
-                for (const char of characters) {
+            try {
+                // --- 3. 执行所有保存操作 ---
+                await dataStorage.saveData('章鱼喷墨机', baseData);
+
+                if (worldBooksToSave) await dataStorage.saveData('worldBooks_data', worldBooksToSave);
+                if (wallpaperToSave) await dataStorage.saveData('wallpaper_data', wallpaperToSave);
+                if (wallpaper2ToSave) await dataStorage.saveData('wallpaper2_data', wallpaper2ToSave);
+                if (aiSpaceWallpaperToSave) await dataStorage.saveData('aiSpaceWallpaper_data', aiSpaceWallpaperToSave);
+                if (homeProfileToSave) await dataStorage.saveData('homeProfile_data', homeProfileToSave);
+
+                for (const char of charactersToSave) {
                     if (char.history && char.history.length > 0) {
                         await dataStorage.saveChatMessages(char.id, 'private', char.history);
                     }
                     const { history, ...charData } = char;
-                    charData.history = [];
+                    charData.history = []; // 清空历史，避免重复存储
                     await dataStorage.saveData(`character_${char.id}`, charData);
                 }
-            }
 
-            if (groups) {
-                for (const group of groups) {
+                for (const group of groupsToSave) {
                     if (group.history && group.history.length > 0) {
                         await dataStorage.saveChatMessages(group.id, 'group', group.history);
                     }
@@ -8134,11 +8148,76 @@ const locationBtn = document.getElementById('location-btn'),
                     groupData.history = [];
                     await dataStorage.saveData(`group_${group.id}`, groupData);
                 }
-            }
 
-            return Promise.resolve();
+                return Promise.resolve();
+
+            } catch (error) {
+                console.error("在 saveData 期间发生严重错误:", error);
+                // 向用户显示一个更明确的错误提示
+                if (typeof showToast === 'function') {
+                    showToast('严重错误：数据保存失败，请检查控制台！');
+                }
+                return Promise.reject(error);
+            }
         };
 // ▲▲▲ 替换结束 ▲▲▲
+
+
+// ▼▼▼ 请将这个全新的函数，粘贴到 loadData 函数的正上方 ▼▼▼
+
+/**
+ * [最终修复] 确保加载后的db对象及其所有子对象（角色、群组）都具有完整的、最新的数据结构。
+ * 这是为了修复“半新不旧”的用户因缺少新功能的数据字段而导致的初始化崩溃。
+ * @param {object} database - 要检查和修复的全局db对象。
+ */
+function ensureDataIntegrity(database) {
+    console.log("正在执行数据结构完整性检查...");
+
+    // 1. 检查并修复顶层 db 对象的属性
+    if (!database.forumData) database.forumData = {};
+    if (!database.forumSettings) database.forumSettings = { worldview: '', userPersona: '', selectedCharIds: [], allowNpcs: true, allowUnrelated: false, allowRomanticNpcs: false, worldBookIds: [] };
+    if (!database.mallData) database.mallData = { api: {}, products: [], customProducts: [], cart: [], likedProducts: [], logistics: [], paymentHistory: [], specialItemsEnabled: false };
+    if (!database.wallet) database.wallet = { balance: 0, passwordEnabled: false, password: null, transactions: [] };
+    if (!database.avatarFrames) database.avatarFrames = [];
+    if (database.uncategorizedCollapsed === undefined) database.uncategorizedCollapsed = false;
+    if (!database.userDiaries) database.userDiaries = [];
+    if (!database.worldBookCategories) database.worldBookCategories = [];
+    if (!database.renderers) database.renderers = [];
+    if (!database.rendererCategories) database.rendererCategories = [];
+    if (!database.myStickers) database.myStickers = []; // 修复表情包
+
+    // 2. 遍历并修复每一个 character 对象
+    if (Array.isArray(database.characters)) {
+        database.characters.forEach(char => {
+            if (!char.soulBondData) {
+                char.soulBondData = { photos: [], wishlist: [], anniversaryInfo: null, background: '', myName: char.myName, aiName: char.remarkName };
+            }
+            if (!char.aiSpaceData) {
+                char.aiSpaceData = {};
+            }
+            if (!char.pendingMessages) {
+                char.pendingMessages = [];
+            }
+            if (char.isSoulBound === undefined) {
+                char.isSoulBound = false;
+            }
+             if (!char.soulBondStatus) {
+                char.soulBondStatus = 'none';
+            }
+        });
+    }
+
+    // 3. 遍历并修复每一个 group 对象
+    if (Array.isArray(database.groups)) {
+        database.groups.forEach(group => {
+            // 在这里为群组添加未来可能需要的新属性
+        });
+    }
+    
+    console.log("数据结构完整性检查完成。");
+}
+
+// ▲▲▲ 粘贴结束 ▲▲▲
 // ▼▼▼ 请用这个完整的、无省略的、最终修正后的新函数，替换掉文件中旧的 loadData 函数 ▼▼▼
         const loadData = async () => {
             // 阶段一：在加载主数据前，恢复所有独立的、非角色/群组绑定的“救生艇”数据
@@ -8525,7 +8604,7 @@ const myStickers = localStorage.getItem('pendingAction_updateMyStickers');
             
             db.characters = loadedCharacters.filter(char => char !== null);
             db.groups = loadedGroups.filter(group => group !== null);
-
+ensureDataIntegrity(db);
             console.log('数据加载完成，db对象结构已确保完整。');
             return Promise.resolve();
         };
@@ -35002,6 +35081,7 @@ fileInput.addEventListener('change', async (e)=>{
         <!-- 更新日志内容区域 -->
         <div id="update-content" style="max-height: 40vh; overflow-y: auto; background-color: #f9f9f9; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px;">
             <ul>
+<li><strong>修复</strong>：AI的手机，心灵羁绊等功能打不开的问题，商城API也已修复</li>
             <li><strong>修复</strong>：表情包添加后刷新页面消失的问题</li>
             <li><strong>修复</strong>：无法滑动到第二页的问题，我发现是没有旧数据的新用户就会无法滑动，因为我一直有旧数据所以没发现bug出现在这里，现在已经修好了！(｡ì _ í｡)</li>
             <li><strong>修复</strong>：修复了世界书导入逻辑，现在不会错误地将世界书导进渲染器里了，也会显示正确的条目名字</li>
@@ -35109,7 +35189,7 @@ fileInput.addEventListener('change', async (e)=>{
         // ==========================================================
         // == 核心配置：每次更新时，修改这里的版本号即可让弹窗重新出现 ==
         // ==========================================================
-        const UPDATE_VERSION = '1.1.1'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
+        const UPDATE_VERSION = '1.1.2'; // 例如：1.0.1, 1.0.2, 'new_feature_update'
         
         const STORAGE_KEY = `updatePopupDismissed_v${UPDATE_VERSION}`;
 
@@ -35225,18 +35305,14 @@ fileInput.addEventListener('change', async (e)=>{
     }
   };
 
-  // flushSaveData：在可用时立即尝试保存（用于 visibilitychange / beforeunload）
+// ▼▼▼ 同时，也请用这个全新的、完整的 flushSaveData 函数，替换掉旧的同名函数 ▼▼▼
   window.flushSaveData = async function() {
     try {
       if (window.__saveTimer) { clearTimeout(window.__saveTimer); window.__saveTimer = null; }
-      const payload = window.__pendingSaveData;
-      window.__pendingSaveData = null;
+      
+      // flushSaveData 不再需要处理 payload，因为它总是保存整个全局 db
       if (typeof window.saveData === 'function') {
-        // 尝试调用 saveData（注意：在 beforeunload 中浏览器可能无法等待异步完成）
-        await window.saveData(payload);
-        return true;
-      } else if (window.dataStorage && typeof window.dataStorage.saveData === 'function') {
-        await window.dataStorage.saveData('章鱼喷墨机', payload || window.db);
+        await window.saveData(); // 直接调用，不带任何参数
         return true;
       } else {
         console.warn('flushSaveData: 无可用的保存接口');
@@ -35247,7 +35323,7 @@ fileInput.addEventListener('change', async (e)=>{
       return false;
     }
   };
-
+// ▲▲▲ 替换结束 ▲▲▲
   // 在页面不可见或卸载时尽量触发同步/快速保存
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'hidden') {
@@ -35414,17 +35490,14 @@ fileInput.addEventListener('change', async (e)=>{
   };
 
   // flushSaveData：在可用时立即尝试保存（用于 visibilitychange / beforeunload）
+// ▼▼▼ 同时，也请用这个全新的、完整的 flushSaveData 函数，替换掉旧的同名函数 ▼▼▼
   window.flushSaveData = async function() {
     try {
       if (window.__saveTimer) { clearTimeout(window.__saveTimer); window.__saveTimer = null; }
-      const payload = window.__pendingSaveData;
-      window.__pendingSaveData = null;
+      
+      // flushSaveData 不再需要处理 payload，因为它总是保存整个全局 db
       if (typeof window.saveData === 'function') {
-        // 尝试调用 saveData（注意：在 beforeunload 中浏览器可能无法等待异步完成）
-        await window.saveData(payload);
-        return true;
-      } else if (window.dataStorage && typeof window.dataStorage.saveData === 'function') {
-        await window.dataStorage.saveData('章鱼喷墨机', payload || window.db);
+        await window.saveData(); // 直接调用，不带任何参数
         return true;
       } else {
         console.warn('flushSaveData: 无可用的保存接口');
@@ -35435,6 +35508,7 @@ fileInput.addEventListener('change', async (e)=>{
       return false;
     }
   };
+// ▲▲▲ 替换结束 ▲▲▲
 
   // 在页面不可见或卸载时尽量触发同步/快速保存
   document.addEventListener('visibilitychange', function() {
